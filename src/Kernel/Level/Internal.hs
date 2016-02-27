@@ -36,15 +36,20 @@ mk_succ :: Level -> Level
 mk_succ pred = Succ pred
 
 {-
-Max invariant:
+Max invariants:
 --------------
-The keys of the Max have unique base levels whose constructor is different from Max and Succ.
+1. the keys of the Max have unique base levels
+2. there are at least two keys
+3. the constructors of the keys are different from Max and Succ
+4. if Zero is a key, it maps to k > 0
 -}
 mk_max :: Level -> Level -> Level
 mk_max lhs rhs = mk_max_core lhs rhs where
-  mk_max_core (Max args1) (Max args2) = Max (Map.unionWith max args1 args2)
-  mk_max_core (Max args1) rhs = Max (uncurry (Map.insertWith max) (to_level_offset rhs) args1)
-  mk_max_core lhs (Max args2) = Max (uncurry (Map.insertWith max) (to_level_offset lhs) args2)
+  mk_max_core (Max args1) (Max args2) = Max $ Map.unionWith max args1 args2
+  mk_max_core (Max args1) rhs = Max $ uncurry (Map.insertWith max) (to_level_offset rhs) args1
+  mk_max_core lhs (Max args2) = Max $ uncurry (Map.insertWith max) (to_level_offset lhs) args2
+  mk_max_core Zero rhs = rhs
+  mk_max_core lhs Zero = lhs
   mk_max_core lhs rhs = Max . Map.fromList $ map to_level_offset [lhs, rhs]
 
 {-
