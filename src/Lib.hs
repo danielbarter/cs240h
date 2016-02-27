@@ -4,4 +4,4 @@ module Lib
 import Kernel.Name
 
 someFunc :: IO ()
-someFunc = print $ mk_name ["rec","eq"]
+someFunc = print $ mk_name ["eq","rec"]
