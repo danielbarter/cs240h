@@ -3,7 +3,7 @@ version:             0.1.0.0
 synopsis:            Reference type checker for Lean Theorem Prover
 description:         Please see README.md
 homepage:            http://github.com/dselsam/leantc#readme
-license:             GPLv3
+license:             GPL-3
 license-file:        LICENSE
 author:              Daniel Selsam
 maintainer:          daniel.selsam@gmail.com
@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level.Internal
+  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level, Kernel.Level.Internal
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , lens-simple

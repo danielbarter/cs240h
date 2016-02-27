@@ -9,7 +9,6 @@ Implementation of universe levels
 -}
 module Kernel.Level.Internal where
 
-import Control.Monad
 import Kernel.Name
 import Lens.Simple
 import Data.List as List
