@@ -3,7 +3,7 @@ version:             0.1.0.0
 synopsis:            Reference type checker for Lean Theorem Prover
 description:         Please see README.md
 homepage:            http://github.com/dselsam/leantc#readme
-license:             GNU GENERAL PUBLIC LICENSE (Version 3, 29 June 2007)
+license:             GPLv3
 license-file:        LICENSE
 author:              Daniel Selsam
 maintainer:          daniel.selsam@gmail.com
