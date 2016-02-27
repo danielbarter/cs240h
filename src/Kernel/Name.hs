@@ -7,5 +7,10 @@ Maintainer  : daniel.selsam@gmail.com
 
 API for hierarchical names
 -}
-module Kernel.Name (Name, mk_name, mk_sysname_i, mk_sysname_s, name_rcons_i, name_rcons_s) where
+module Kernel.Name (
+  Name
+  , no_name
+  , mk_name, mk_sysname_i, mk_sysname_s
+  , name_rcons_i, name_rcons_s
+  ) where
 import Kernel.Name.Internal

@@ -21,7 +21,7 @@ import Data.Set (Set)
 
 data Level = Zero
            | Succ Level
-           | Max (Map Level Integer)
+           | Max (Map Level Int)
            | IMax Level Level
            | LevelParam Name
            | GlobalLevel Name
@@ -72,15 +72,15 @@ mk_global_level = GlobalLevel
 
 {- Getters / checkers -}
 
-max_args_to_levels :: Map Level Integer -> [Level]
+max_args_to_levels :: Map Level Int -> [Level]
 max_args_to_levels m = map (uncurry mk_iterated_succ) $ Map.toList m
 
-has_param :: Level -> Bool
-has_param l = case l of
+level_has_param :: Level -> Bool
+level_has_param l = case l of
   LevelParam _ -> True
-  Succ pred -> has_param pred
-  Max args -> any has_param $ Map.keys args
-  IMax lhs rhs -> has_param lhs || has_param rhs
+  Succ pred -> level_has_param pred
+  Max args -> any level_has_param $ Map.keys args
+  IMax lhs rhs -> level_has_param lhs || level_has_param rhs
   _ -> False
 
 get_undef_params :: Level -> [Name] -> [Name]
@@ -105,12 +105,12 @@ is_explicit l = case l of
   Succ pred -> is_explicit pred
   _ -> False
 
-get_explicit_depth :: Level -> Integer
+get_explicit_depth :: Level -> Int
 get_explicit_depth l = case l of
   Zero -> 0
   Succ pred -> 1 + get_explicit_depth pred
 
-to_level_offset :: Level -> (Level, Integer)
+to_level_offset :: Level -> (Level, Int)
 to_level_offset l = case l of
   Succ pred -> over _2 (+1) $ to_level_offset pred
   _ -> (l,0)
@@ -120,7 +120,7 @@ is_zero l = case l of
   Zero -> True
   _ -> False
 
-mk_iterated_succ :: Level -> Integer -> Level
+mk_iterated_succ :: Level -> Int -> Level
 mk_iterated_succ l k
   | k == 0 = l
   | k > 0 = Succ $ mk_iterated_succ l (k-1)
@@ -159,7 +159,7 @@ instantiate_level level_param_names levels level =
     instantiate_level_fn :: [Name] -> [Level] -> LevelReplaceFn
     instantiate_level_fn level_param_names levels level
       | not (length level_param_names == length levels) = error "Wrong number of level params"
-      | not (has_param level) = Just level
+      | not (level_has_param level) = Just level
 
     instantiate_level_fn level_param_names levels (LevelParam name) =
       case List.elemIndex name level_param_names of
