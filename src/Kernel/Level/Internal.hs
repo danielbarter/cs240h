@@ -12,6 +12,7 @@ module Kernel.Level.Internal where
 import Kernel.Name
 import Lens.Simple
 import Data.List as List
+import Control.Monad
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -29,11 +30,11 @@ data Level = Zero
 
 {- Constructors -}
 
-mk_zero :: Level
-mk_zero = Zero
+mkZero :: Level
+mkZero = Zero
 
-mk_succ :: Level -> Level
-mk_succ pred = Succ pred
+mkSucc :: Level -> Level
+mkSucc pred = Succ pred
 
 {-
 Max invariants:
@@ -43,14 +44,14 @@ Max invariants:
 3. the constructors of the keys are different from Max and Succ
 4. if Zero is a key, it maps to k > 0
 -}
-mk_max :: Level -> Level -> Level
-mk_max lhs rhs = mk_max_core lhs rhs where
-  mk_max_core (Max args1) (Max args2) = Max $ Map.unionWith max args1 args2
-  mk_max_core (Max args1) rhs = Max $ uncurry (Map.insertWith max) (to_level_offset rhs) args1
-  mk_max_core lhs (Max args2) = Max $ uncurry (Map.insertWith max) (to_level_offset lhs) args2
-  mk_max_core Zero rhs = rhs
-  mk_max_core lhs Zero = lhs
-  mk_max_core lhs rhs = Max . Map.fromList $ map to_level_offset [lhs, rhs]
+mkMax :: Level -> Level -> Level
+mkMax lhs rhs = mkMaxCore lhs rhs where
+  mkMaxCore (Max args1) (Max args2) = Max $ Map.unionWith max args1 args2
+  mkMaxCore (Max args1) rhs = Max $ uncurry (Map.insertWith max) (toLevelOffset rhs) args1
+  mkMaxCore lhs (Max args2) = Max $ uncurry (Map.insertWith max) (toLevelOffset lhs) args2
+  mkMaxCore Zero rhs = rhs
+  mkMaxCore lhs Zero = lhs
+  mkMaxCore lhs rhs = Max . Map.fromList $ map toLevelOffset [lhs, rhs]
 
 {-
 IMax invariant:
@@ -61,136 +62,136 @@ We only create an IMax if:
 3. the LHS and RHS are not the same
 -}
 
-mk_imax :: Level -> Level -> Level
-mk_imax lhs rhs
-  | is_definitely_not_zero rhs = mk_max lhs rhs
-  | is_zero rhs = mk_zero
-  | is_zero lhs = rhs
+mkIMax :: Level -> Level -> Level
+mkIMax lhs rhs
+  | isDefinitelyNotZero rhs = mkMax lhs rhs
+  | isZero rhs = mkZero
+  | isZero lhs = rhs
   | lhs == rhs = lhs
   | otherwise = IMax lhs rhs
 
-mk_level_param :: Name -> Level
-mk_level_param = LevelParam
+mkParam :: Name -> Level
+mkParam = LevelParam
 
-mk_global_level :: Name -> Level
-mk_global_level = GlobalLevel
+mkGlobal :: Name -> Level
+mkGlobal = GlobalLevel
 
 {- Getters / checkers -}
 
-max_args_to_levels :: Map Level Int -> [Level]
-max_args_to_levels m = map (uncurry mk_iterated_succ) $ Map.toList m
+maxArgsToLevels :: Map Level Int -> [Level]
+maxArgsToLevels m = map (uncurry mkIteratedSucc) $ Map.toList m
 
-level_has_param :: Level -> Bool
-level_has_param l = case l of
+hasParam :: Level -> Bool
+hasParam l = case l of
   LevelParam _ -> True
-  Succ pred -> level_has_param pred
-  Max args -> any level_has_param $ Map.keys args
-  IMax lhs rhs -> level_has_param lhs || level_has_param rhs
+  Succ pred -> hasParam pred
+  Max args -> any hasParam $ Map.keys args
+  IMax lhs rhs -> hasParam lhs || hasParam rhs
   _ -> False
 
-get_undef_params :: Level -> [Name] -> [Name]
-get_undef_params l ns = case l of
-  Succ pred -> get_undef_params pred ns
-  Max args -> concatMap (flip get_undef_params ns) $ Map.keys args
-  IMax lhs rhs -> get_undef_params lhs ns ++ get_undef_params rhs ns
-  LevelParam n -> if elem n ns then [] else [n]
-  _ -> []
+getUndefParam :: Level -> [Name] -> Maybe Name
+getUndefParam l ns = case l of
+  Succ pred -> getUndefParam pred ns
+  Max args -> msum . map (flip getUndefParam ns) $ Map.keys args
+  IMax lhs rhs -> getUndefParam lhs ns `mplus` getUndefParam rhs ns
+  LevelParam n -> if elem n ns then Nothing else Just n
+  _ -> Nothing
 
-get_undef_globals :: Level -> Set Name -> [Name]
-get_undef_globals l ns = case l of
-  Succ pred -> get_undef_globals pred ns
-  Max args -> concatMap (flip get_undef_globals ns) $ Map.keys args
-  IMax lhs rhs -> get_undef_globals lhs ns ++ get_undef_globals rhs ns
-  GlobalLevel n -> if Set.member n ns then [] else [n]
-  _ -> []
+getUndefGlobal :: Level -> Set Name -> Maybe Name
+getUndefGlobal l ns = case l of
+  Succ pred -> getUndefGlobal pred ns
+  Max args -> msum . map (flip getUndefGlobal ns) $ Map.keys args
+  IMax lhs rhs -> getUndefGlobal lhs ns `mplus` getUndefGlobal rhs ns
+  GlobalLevel n -> if Set.member n ns then Nothing else Just n
+  _ -> Nothing
 
-is_explicit :: Level -> Bool
-is_explicit l = case l of
+isExplicit :: Level -> Bool
+isExplicit l = case l of
   Zero -> True
-  Succ pred -> is_explicit pred
+  Succ pred -> isExplicit pred
   _ -> False
 
-get_explicit_depth :: Level -> Int
-get_explicit_depth l = case l of
+getExplicitDepth :: Level -> Int
+getExplicitDepth l = case l of
   Zero -> 0
-  Succ pred -> 1 + get_explicit_depth pred
+  Succ pred -> 1 + getExplicitDepth pred
 
-to_level_offset :: Level -> (Level, Int)
-to_level_offset l = case l of
-  Succ pred -> over _2 (+1) $ to_level_offset pred
+toLevelOffset :: Level -> (Level, Int)
+toLevelOffset l = case l of
+  Succ pred -> over _2 (+1) $ toLevelOffset pred
   _ -> (l,0)
 
-is_zero :: Level -> Bool
-is_zero l = case l of
+isZero :: Level -> Bool
+isZero l = case l of
   Zero -> True
   _ -> False
 
-mk_iterated_succ :: Level -> Int -> Level
-mk_iterated_succ l k
+mkIteratedSucc :: Level -> Int -> Level
+mkIteratedSucc l k
   | k == 0 = l
-  | k > 0 = Succ $ mk_iterated_succ l (k-1)
+  | k > 0 = Succ $ mkIteratedSucc l (k-1)
 
-is_definitely_not_zero :: Level -> Bool
-is_definitely_not_zero l = case l of
+isDefinitelyNotZero :: Level -> Bool
+isDefinitelyNotZero l = case l of
   Zero -> False
   LevelParam _ -> False
   GlobalLevel _ -> False
   Succ _ -> True
-  Max args -> any is_definitely_not_zero $ max_args_to_levels args
-  IMax lhs rhs -> is_definitely_not_zero rhs
+  Max args -> any isDefinitelyNotZero $ maxArgsToLevels args
+  IMax lhs rhs -> isDefinitelyNotZero rhs
 
 {- Traversals -}
 
 type LevelReplaceFn = (Level -> Maybe Level)
 
-replace_in_level :: LevelReplaceFn -> Level -> Level
-replace_in_level f l =
+replaceInLevel :: LevelReplaceFn -> Level -> Level
+replaceInLevel f l =
   case f l of
     Just l0 -> l0
     Nothing ->
       case l of
         Zero -> l
-        Succ pred -> mk_succ $ replace_in_level f pred
-        Max args -> Max . Map.fromList $ map (to_level_offset . replace_in_level f) $ max_args_to_levels args
-        IMax lhs rhs -> mk_imax (replace_in_level f lhs) (replace_in_level f rhs)
+        Succ pred -> mkSucc $ replaceInLevel f pred
+        Max args -> Max . Map.fromList $ map (toLevelOffset . replaceInLevel f) $ maxArgsToLevels args
+        IMax lhs rhs -> mkIMax (replaceInLevel f lhs) (replaceInLevel f rhs)
         LevelParam _ -> l
         GlobalLevel _ -> l
 
 
-instantiate_level :: [Name] -> [Level] -> Level -> Level
-instantiate_level level_param_names levels level =
-  replace_in_level (instantiate_level_fn level_param_names levels) level
+instantiate :: [Name] -> [Level] -> Level -> Level
+instantiate levelParamNames levels level =
+  replaceInLevel (instantiateLevel_fn levelParamNames levels) level
   where
-    instantiate_level_fn :: [Name] -> [Level] -> LevelReplaceFn
-    instantiate_level_fn level_param_names levels level
-      | not (length level_param_names == length levels) = error "Wrong number of level params"
-      | not (level_has_param level) = Just level
+    instantiateLevel_fn :: [Name] -> [Level] -> LevelReplaceFn
+    instantiateLevel_fn levelParamNames levels level
+      | not (length levelParamNames == length levels) = error "Wrong number of level params"
+      | not (hasParam level) = Just level
 
-    instantiate_level_fn level_param_names levels (LevelParam name) =
-      case List.elemIndex name level_param_names of
+    instantiateLevel_fn levelParamNames levels (LevelParam name) =
+      case List.elemIndex name levelParamNames of
         Nothing -> Nothing
         Just idx -> Just (levels!!idx)
 
-    instantiate_level_fn _ _ _ = Nothing
+    instantiateLevel_fn _ _ _ = Nothing
 
-level_not_bigger_than :: Level -> Level -> Bool
-level_not_bigger_than l1 l2 = go l1 l2 where
+notBiggerThan :: Level -> Level -> Bool
+notBiggerThan l1 l2 = go l1 l2 where
   go l1 l2
-    | is_zero l1 = True
+    | isZero l1 = True
     | l1 == l2 = True
 
-  go (Max args1) l2 = all (flip go l2) $ max_args_to_levels args1
-  -- go l1 (Max args2) | any (go l1) $ max_args_to_levels args2 = True
+  go (Max args1) l2 = all (flip go l2) $ maxArgsToLevels args1
+  -- go l1 (Max args2) | any (go l1) $ maxArgsToLevels args2 = True
   -- TODO(dhs): not sure why we need can't decide at this point
   -- (once this fails and I figure it out, put a comment)
-  go l1 (Max args2) = any (go l1) $ max_args_to_levels args2
+  go l1 (Max args2) = any (go l1) $ maxArgsToLevels args2
 
   go (IMax lhs rhs) l2 = go lhs l2 && go rhs l2
   go l1 (IMax lhs rhs) = go l1 rhs
 
   go l1 l2 =
-    let (l1', k1) = to_level_offset l1
-        (l2', k2) = to_level_offset l2 in
-     if is_zero l1' || l1' == l2' then k1 <= k2 else
+    let (l1', k1) = toLevelOffset l1
+        (l2', k2) = toLevelOffset l2 in
+     if isZero l1' || l1' == l2' then k1 <= k2 else
        if k1 == k2 && k1 > 0 then go l1' l2' else
          False

@@ -11,24 +11,24 @@ module Kernel.Name.Internal where
 
 data Name = NoName | RConsString Name String | RConsInteger Name Integer deriving (Eq,Ord)
 
-show_name :: Name -> String
-show_name NoName = ""
-show_name (RConsString n s) = show_name n ++ "." ++ s
-show_name (RConsInteger n i) = show_name n ++ "." ++ show(i)
+showName :: Name -> String
+showName NoName = ""
+showName (RConsString n s) = showName n ++ "." ++ s
+showName (RConsInteger n i) = showName n ++ "." ++ show(i)
 
-instance Show Name where show n = show_name n
+instance Show Name where show n = showName n
 
-mk_name :: [String] -> Name
-mk_name ns = mk_name_core (reverse ns) where
-  mk_name_core [] = NoName
-  mk_name_core (n:ns) = RConsString (mk_name ns) n
+mkName :: [String] -> Name
+mkName ns = mkNameCore (reverse ns) where
+  mkNameCore [] = NoName
+  mkNameCore (n:ns) = RConsString (mkNameCore ns) n
 
-system_prefix = mk_name ["#_system"]
+systemPrefix = mkName ["#_system"]
 
-mk_sysname_i i = RConsInteger system_prefix i
-mk_sysname_s s = RConsString system_prefix s
+mkSystemNameI i = RConsInteger systemPrefix i
+mkSystemNameS s = RConsString systemPrefix s
 
-no_name = NoName
+noName = NoName
 
-name_rcons_i = RConsString
-name_rcons_s = RConsInteger
+nameRConsI = RConsString
+nameRConsS = RConsInteger

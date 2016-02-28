@@ -10,7 +10,10 @@ Implementation for expressions
 module Kernel.Expr.Internal where
 
 import Kernel.Name
-import Kernel.Level
+
+import qualified Kernel.Level as Level
+import Kernel.Level (Level)
+
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import Control.Monad (mplus)
@@ -149,13 +152,13 @@ mk_pi :: Name -> Expr -> Expr -> BinderInfo -> Expr
 mk_pi = mk_binding True
 
 mk_pi_default :: Expr -> Expr -> Expr
-mk_pi_default domain body = mk_pi no_name domain body BinderDefault
+mk_pi_default domain body = mk_pi noName domain body BinderDefault
 
 mk_lambda :: Name -> Expr -> Expr -> BinderInfo -> Expr
 mk_lambda = mk_binding False
 
 mk_lambda_default :: Expr -> Expr -> Expr
-mk_lambda_default domain body = mk_lambda no_name domain body BinderDefault
+mk_lambda_default domain body = mk_lambda noName domain body BinderDefault
 
 {- Updaters -}
 
@@ -260,10 +263,10 @@ instantiate_univ_params e level_names levels =
       | not (expr_has_level_param e) = Just e
 
     instantiate_univ_params_fn level_param_names levels (Constant const) _ =
-      Just $ update_constant const (map (instantiate_level level_param_names levels) (const_levels const))
+      Just $ update_constant const (map (Level.instantiate level_param_names levels) (const_levels const))
 
     instantiate_univ_params_fn level_param_names levels (Sort sort) _ =
-      Just $ update_sort sort (instantiate_level level_param_names levels (sort_level sort))
+      Just $ update_sort sort (Level.instantiate level_param_names levels (sort_level sort))
 
     instantiate_univ_params_fn _ _ _ _ = Nothing
 

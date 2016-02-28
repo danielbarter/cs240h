@@ -9,8 +9,8 @@ API for hierarchical names
 -}
 module Kernel.Name (
   Name
-  , no_name
-  , mk_name, mk_sysname_i, mk_sysname_s
-  , name_rcons_i, name_rcons_s
+  , noName
+  , mkName, mkSystemNameI, mkSystemNameS
+  , nameRConsI, nameRConsS
   ) where
 import Kernel.Name.Internal
