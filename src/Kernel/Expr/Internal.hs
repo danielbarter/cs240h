@@ -19,29 +19,29 @@ import qualified Data.List as List
 import Control.Monad (mplus)
 
 data BinderInfo = BinderDefault | BinderImplicit | BinderStrict | BinderClass deriving (Eq,Show,Ord)
-data ExprCache = ExprCache { cache_has_local :: Bool,
-                             cache_has_level_param :: Bool,
-                             cache_free_var_range :: Int } deriving (Eq,Show,Ord)
+data ExprCache = ExprCache { cacheHasLocal :: Bool,
+                             cacheHasLevelParam :: Bool,
+                             cacheFreeVarRange :: Int } deriving (Eq,Show,Ord)
 
-data VarData = VarData { var_idx :: Int } deriving (Eq,Show,Ord)
+data VarData = VarData { varIdx :: Int } deriving (Eq,Show,Ord)
 
-data LocalData = LocalData { local_name :: Name ,
-                             local_pp_name :: Name,
-                             local_type :: Expr,
-                             local_info :: BinderInfo,
-                             local_cache :: ExprCache } deriving (Eq,Show,Ord)
+data LocalData = LocalData { localName :: Name ,
+                             localPPName :: Name,
+                             localType :: Expr,
+                             localInfo :: BinderInfo,
+                             localCache :: ExprCache } deriving (Eq,Show,Ord)
 
-data SortData = SortData { sort_level :: Level } deriving (Eq,Show,Ord)
+data SortData = SortData { sortLevel :: Level } deriving (Eq,Show,Ord)
 
-data ConstantData = ConstantData { const_name :: Name , const_levels :: [Level] } deriving (Eq,Show,Ord)
+data ConstantData = ConstantData { constName :: Name , constLevels :: [Level] } deriving (Eq,Show,Ord)
 
-data AppData = AppData { app_fn :: Expr, app_arg :: Expr, app_cache :: ExprCache  } deriving (Eq,Show,Ord)
+data AppData = AppData { appFn :: Expr, appArg :: Expr, appCache :: ExprCache  } deriving (Eq,Show,Ord)
 
-data BindingData = BindingData { binding_name :: Name,
-                                 binding_domain :: Expr,
-                                 binding_body :: Expr,
-                                 binding_info :: BinderInfo,
-                                 binding_cache :: ExprCache } deriving (Eq,Show,Ord)
+data BindingData = BindingData { bindingName :: Name,
+                                 bindingDomain :: Expr,
+                                 bindingBody :: Expr,
+                                 bindingInfo :: BinderInfo,
+                                 bindingCache :: ExprCache } deriving (Eq,Show,Ord)
 
 data Expr = Var VarData
                 | Local LocalData
@@ -54,132 +54,132 @@ data Expr = Var VarData
 
 {- Free variables -}
 
-get_free_var_range :: Expr -> Int
-get_free_var_range e = case e of
-  Var var -> 1 + var_idx var
-  Local local -> cache_free_var_range $ local_cache local
+getFreeVarRange :: Expr -> Int
+getFreeVarRange e = case e of
+  Var var -> 1 + varIdx var
+  Local local -> cacheFreeVarRange $ localCache local
   Constant _ -> 0
   Sort _ -> 0
-  Lambda lam -> cache_free_var_range $ binding_cache lam
-  Pi pi -> cache_free_var_range $ binding_cache pi
-  App app -> cache_free_var_range $ app_cache app
+  Lambda lam -> cacheFreeVarRange $ bindingCache lam
+  Pi pi -> cacheFreeVarRange $ bindingCache pi
+  App app -> cacheFreeVarRange $ appCache app
 
-has_free_vars :: Expr -> Bool
-has_free_vars e = get_free_var_range e > 0
+hasFreeVars :: Expr -> Bool
+hasFreeVars e = getFreeVarRange e > 0
 
 closed :: Expr -> Bool
-closed e = not $ has_free_vars e
+closed e = not $ hasFreeVars e
 
 {- `has` functions -}
 
-expr_has_local :: Expr -> Bool
-expr_has_local e = case e of
+exprHasLocal :: Expr -> Bool
+exprHasLocal e = case e of
   Var _ -> False
   Local _ -> True
   Sort _ -> False
   Constant _ -> False
-  Lambda lam -> cache_has_local $ binding_cache lam
-  Pi pi -> cache_has_local $ binding_cache pi
-  App app -> cache_has_local $ app_cache app
+  Lambda lam -> cacheHasLocal $ bindingCache lam
+  Pi pi -> cacheHasLocal $ bindingCache pi
+  App app -> cacheHasLocal $ appCache app
 
-expr_has_level_param :: Expr -> Bool
-expr_has_level_param e = case e of
+exprHasLevelParam :: Expr -> Bool
+exprHasLevelParam e = case e of
   Var var -> False
-  Local local -> cache_has_level_param $ local_cache local
-  Constant const -> any (==True) (map level_has_param (const_levels const))
-  Sort sort -> level_has_param (sort_level sort)
-  Lambda lam -> cache_has_level_param $ binding_cache lam
-  Pi pi -> cache_has_level_param $ binding_cache pi
-  App app -> cache_has_level_param $ app_cache app
+  Local local -> cacheHasLevelParam $ localCache local
+  Constant const -> any (==True) (map Level.hasParam (constLevels const))
+  Sort sort -> Level.hasParam (sortLevel sort)
+  Lambda lam -> cacheHasLevelParam $ bindingCache lam
+  Pi pi -> cacheHasLevelParam $ bindingCache pi
+  App app -> cacheHasLevelParam $ appCache app
 
 {- N-ary applications -}
 
-get_operator :: Expr -> Expr
-get_operator e = case e of
-  App app -> get_operator (app_fn app)
+getOperator :: Expr -> Expr
+getOperator e = case e of
+  App app -> getOperator (appFn app)
   _ -> e
 
-get_app_args :: Expr -> [Expr]
-get_app_args e = reverse (get_app_args_rev e) where
-  get_app_args_rev (App app) = app_arg app : get_app_args_rev (app_fn app)
-  get_app_args_rev _ = []
+getAppArgs :: Expr -> [Expr]
+getAppArgs e = reverse (getAppArgs_rev e) where
+  getAppArgs_rev (App app) = appArg app : getAppArgs_rev (appFn app)
+  getAppArgs_rev _ = []
 
-get_app_op_args :: Expr -> (Expr, [Expr])
-get_app_op_args e = (get_operator e,get_app_args e)
+getAppOpArgs :: Expr -> (Expr, [Expr])
+getAppOpArgs e = (getOperator e, getAppArgs e)
 
 {- Constructors -}
 
-mk_var :: Int -> Expr
-mk_var v_idx = Var (VarData v_idx)
+mkVar :: Int -> Expr
+mkVar v_idx = Var (VarData v_idx)
 
-mk_local :: Name -> Name -> Expr -> BinderInfo -> Expr
-mk_local name pp_name ty binfo = Local $ mk_local_data name pp_name ty binfo
+mkLocal :: Name -> Name -> Expr -> BinderInfo -> Expr
+mkLocal name pp_name ty binfo = Local $ mkLocalData name pp_name ty binfo
 
-mk_local_default :: Name -> Expr -> Expr
-mk_local_default name ty = Local $ mk_local_data name name ty BinderDefault
+mkLocalDefault :: Name -> Expr -> Expr
+mkLocalDefault name ty = Local $ mkLocalData name name ty BinderDefault
 
-mk_local_data :: Name -> Name -> Expr -> BinderInfo -> LocalData
-mk_local_data name pp_name ty binfo = LocalData name pp_name ty binfo
-                                      (ExprCache True (expr_has_level_param ty) (get_free_var_range ty))
+mkLocalData :: Name -> Name -> Expr -> BinderInfo -> LocalData
+mkLocalData name pp_name ty binfo = LocalData name pp_name ty binfo
+                                      (ExprCache True (exprHasLevelParam ty) (getFreeVarRange ty))
 
-mk_sort :: Level -> Expr
-mk_sort l = Sort (SortData l)
+mkSort :: Level -> Expr
+mkSort l = Sort (SortData l)
 
-mk_constant :: Name -> [Level] -> Expr
-mk_constant name levels = Constant (ConstantData name levels)
+mkConstant :: Name -> [Level] -> Expr
+mkConstant name levels = Constant (ConstantData name levels)
 
-mk_app :: Expr -> Expr -> Expr
-mk_app fn arg = App (AppData fn arg (ExprCache
-                                     (expr_has_local fn || expr_has_local arg)
-                                     (expr_has_level_param fn || expr_has_level_param arg)
-                                     (max (get_free_var_range fn) (get_free_var_range arg))))
+mkApp :: Expr -> Expr -> Expr
+mkApp fn arg = App (AppData fn arg (ExprCache
+                                     (exprHasLocal fn || exprHasLocal arg)
+                                     (exprHasLevelParam fn || exprHasLevelParam arg)
+                                     (max (getFreeVarRange fn) (getFreeVarRange arg))))
 
-mk_app_seq :: Expr -> [Expr] -> Expr
-mk_app_seq fn [] = fn
-mk_app_seq fn (arg:args) = mk_app_seq (mk_app fn arg) args
+mkAppSeq :: Expr -> [Expr] -> Expr
+mkAppSeq fn [] = fn
+mkAppSeq fn (arg:args) = mkAppSeq (mkApp fn arg) args
 
-mk_binding :: Bool -> Name -> Expr -> Expr -> BinderInfo -> Expr
-mk_binding is_pi name domain body binfo =
+mkBinding :: Bool -> Name -> Expr -> Expr -> BinderInfo -> Expr
+mkBinding isPi name domain body binfo =
   let ecache = (ExprCache
-                (expr_has_local domain || expr_has_local body)
-                (expr_has_level_param domain || expr_has_level_param body)
-                (max (get_free_var_range domain) (get_free_var_range body - 1))) in
-  case is_pi of
+                (exprHasLocal domain || exprHasLocal body)
+                (exprHasLevelParam domain || exprHasLevelParam body)
+                (max (getFreeVarRange domain) (getFreeVarRange body - 1))) in
+  case isPi of
     True -> Pi (BindingData name domain body binfo ecache)
     False -> Lambda (BindingData name domain body binfo ecache)
 
-mk_pi :: Name -> Expr -> Expr -> BinderInfo -> Expr
-mk_pi = mk_binding True
+mkPi :: Name -> Expr -> Expr -> BinderInfo -> Expr
+mkPi = mkBinding True
 
-mk_pi_default :: Expr -> Expr -> Expr
-mk_pi_default domain body = mk_pi noName domain body BinderDefault
+mkPiDefault :: Expr -> Expr -> Expr
+mkPiDefault domain body = mkPi noName domain body BinderDefault
 
-mk_lambda :: Name -> Expr -> Expr -> BinderInfo -> Expr
-mk_lambda = mk_binding False
+mkLambda :: Name -> Expr -> Expr -> BinderInfo -> Expr
+mkLambda = mkBinding False
 
-mk_lambda_default :: Expr -> Expr -> Expr
-mk_lambda_default domain body = mk_lambda noName domain body BinderDefault
+mkLambdaDefault :: Expr -> Expr -> Expr
+mkLambdaDefault domain body = mkLambda noName domain body BinderDefault
 
 {- Updaters -}
 
-update_local :: LocalData -> Expr -> Expr
-update_local local new_type = mk_local (local_name local) (local_pp_name local) new_type (local_info local)
+updateLocal :: LocalData -> Expr -> Expr
+updateLocal local new_type = mkLocal (localName local) (localPPName local) new_type (localInfo local)
 
-update_binding :: Bool -> BindingData -> Expr -> Expr -> Expr
-update_binding is_pi bind new_domain new_body =
-  mk_binding is_pi (binding_name bind) new_domain new_body (binding_info bind)
+updateBinding :: Bool -> BindingData -> Expr -> Expr -> Expr
+updateBinding isPi bind new_domain new_body =
+  mkBinding isPi (bindingName bind) new_domain new_body (bindingInfo bind)
 
-update_pi :: BindingData -> Expr -> Expr -> Expr
-update_pi = update_binding True
+updatePi :: BindingData -> Expr -> Expr -> Expr
+updatePi = updateBinding True
 
-update_lambda :: BindingData -> Expr -> Expr -> Expr
-update_lambda = update_binding False
+updateLambda :: BindingData -> Expr -> Expr -> Expr
+updateLambda = updateBinding False
 
-update_app :: AppData -> Expr -> Expr -> Expr
-update_app app new_fn new_arg = mk_app new_fn new_arg
+updateApp :: AppData -> Expr -> Expr -> Expr
+updateApp app new_fn new_arg = mkApp new_fn new_arg
 
-update_constant const levels = mk_constant (const_name const) levels
-update_sort sort level = mk_sort level
+updateConstant const levels = mkConstant (constName const) levels
+updateSort sort level = mkSort level
 
 {- Traversals -}
 
@@ -187,125 +187,125 @@ update_sort sort level = mk_sort level
 type Offset = Int
 type ReplaceFn = (Expr -> Offset -> Maybe Expr)
 
-replace_in_expr :: ReplaceFn -> Expr -> Expr
-replace_in_expr f t = replace_in_expr_core f t 0
+replaceInExpr :: ReplaceFn -> Expr -> Expr
+replaceInExpr f t = replaceInExprCore f t 0
   where
-    replace_in_expr_core :: ReplaceFn -> Expr -> Offset -> Expr
-    replace_in_expr_core f t offset =
+    replaceInExprCore :: ReplaceFn -> Expr -> Offset -> Expr
+    replaceInExprCore f t offset =
       case f t offset of
         Just t0 -> t0
         Nothing ->
           case t of
-            Local local -> update_local local (replace_in_expr_core f (local_type local) offset)
-            App app -> update_app app (replace_in_expr_core f (app_fn app) offset)
-                       (replace_in_expr_core f (app_arg app) offset)
-            Lambda lam -> update_lambda lam (replace_in_expr_core f (binding_domain lam) offset)
-                          (replace_in_expr_core f (binding_body lam) (1+offset))
-            Pi pi -> update_pi pi (replace_in_expr_core f (binding_domain pi) offset)
-                     (replace_in_expr_core f (binding_body pi) (1+offset))
+            Local local -> updateLocal local (replaceInExprCore f (localType local) offset)
+            App app -> updateApp app (replaceInExprCore f (appFn app) offset)
+                       (replaceInExprCore f (appArg app) offset)
+            Lambda lam -> updateLambda lam (replaceInExprCore f (bindingDomain lam) offset)
+                          (replaceInExprCore f (bindingBody lam) (1+offset))
+            Pi pi -> updatePi pi (replaceInExprCore f (bindingDomain pi) offset)
+                     (replaceInExprCore f (bindingBody pi) (1+offset))
             _ -> t
 
 
 -- Find
 type FindFn = (Expr -> Offset -> Bool)
-find_in_expr :: FindFn -> Expr -> Maybe Expr
-find_in_expr f t = find_in_expr_core f t 0
+findInExpr :: FindFn -> Expr -> Maybe Expr
+findInExpr f t = findInExprCore f t 0
   where
-    find_in_expr_core :: FindFn -> Expr -> Offset -> Maybe Expr
-    find_in_expr_core f t offset =
+    findInExprCore :: FindFn -> Expr -> Offset -> Maybe Expr
+    findInExprCore f t offset =
       if f t offset then Just t else
         case t of
-          Local local -> find_in_expr_core f (local_type local) offset
-          App app -> find_in_expr_core f (app_fn app) offset `mplus` find_in_expr_core f (app_arg app) offset
-          Lambda lam -> find_in_expr_core f (binding_domain lam) offset `mplus` find_in_expr_core f (binding_body lam) (offset+1)
-          Pi pi -> find_in_expr_core f (binding_domain pi) offset `mplus` find_in_expr_core f (binding_body pi) (offset+1)
+          Local local -> findInExprCore f (localType local) offset
+          App app -> findInExprCore f (appFn app) offset `mplus` findInExprCore f (appArg app) offset
+          Lambda lam -> findInExprCore f (bindingDomain lam) offset `mplus` findInExprCore f (bindingBody lam) (offset+1)
+          Pi pi -> findInExprCore f (bindingDomain pi) offset `mplus` findInExprCore f (bindingBody pi) (offset+1)
           _ -> Nothing
 
 -- Instantiate
-instantiate_seq :: Expr -> [Expr] -> Expr
-instantiate_seq e substs = replace_in_expr (instantiate_fn substs) e
+instantiateSeq :: Expr -> [Expr] -> Expr
+instantiateSeq e substs = replaceInExpr (instantiateSeqFn substs) e
   where
-    instantiate_fn :: [Expr] -> ReplaceFn
-    instantiate_fn substs e offset
-      | offset >= get_free_var_range e = Just e
+    instantiateSeqFn :: [Expr] -> ReplaceFn
+    instantiateSeqFn substs e offset
+      | offset >= getFreeVarRange e = Just e
 
-    instantiate_fn substs (Var var) offset
-      | var_idx var >= offset && var_idx var < offset + length substs =
-          Just $ lift_free_vars (substs !! (var_idx var - offset)) offset
-      | var_idx var > offset = Just $ mk_var (var_idx var - length substs)
+    instantiateSeqFn substs (Var var) offset
+      | varIdx var >= offset && varIdx var < offset + length substs =
+          Just $ liftFreeVars (substs !! (varIdx var - offset)) offset
+      | varIdx var > offset = Just $ mkVar (varIdx var - length substs)
 
-    instantiate_fn _ _ _ = Nothing
+    instantiateSeqFn _ _ _ = Nothing
 
 instantiate :: Expr -> Expr -> Expr
-instantiate e subst = instantiate_seq e [subst]
+instantiate e subst = instantiateSeq e [subst]
 
 -- Lift free vars
-lift_free_vars :: Expr -> Int -> Expr
-lift_free_vars e shift = replace_in_expr (lift_free_vars_fn shift) e
+liftFreeVars :: Expr -> Int -> Expr
+liftFreeVars e shift = replaceInExpr (liftFreeVarsFn shift) e
   where
-    lift_free_vars_fn :: Offset -> ReplaceFn
-    lift_free_vars_fn shift e offset
-      | offset >= get_free_var_range e = Just e
+    liftFreeVarsFn :: Offset -> ReplaceFn
+    liftFreeVarsFn shift e offset
+      | offset >= getFreeVarRange e = Just e
 
-    lift_free_vars_fn shift (Var var) offset
-      | var_idx var >= offset = Just $ mk_var (var_idx var + shift)
+    liftFreeVarsFn shift (Var var) offset
+      | varIdx var >= offset = Just $ mkVar (varIdx var + shift)
 
-    lift_free_vars_fn _ _ _ = Nothing
+    liftFreeVarsFn _ _ _ = Nothing
 
 
 -- Instantiate universe params
-instantiate_univ_params :: Expr -> [Name] -> [Level] -> Expr
-instantiate_univ_params e level_names levels =
-  replace_in_expr (instantiate_univ_params_fn level_names levels) e
+instantiateLevelParams :: Expr -> [Name] -> [Level] -> Expr
+instantiateLevelParams e levelParamNames levels =
+  replaceInExpr (instantiateLevelParamsFn levelParamNames levels) e
   where
-    instantiate_univ_params_fn :: [Name] -> [Level] -> ReplaceFn
-    instantiate_univ_params_fn level_param_names levels e _
-      | not (expr_has_level_param e) = Just e
+    instantiateLevelParamsFn :: [Name] -> [Level] -> ReplaceFn
+    instantiateLevelParamsFn levelParamNames levels e _
+      | not (exprHasLevelParam e) = Just e
 
-    instantiate_univ_params_fn level_param_names levels (Constant const) _ =
-      Just $ update_constant const (map (Level.instantiate level_param_names levels) (const_levels const))
+    instantiateLevelParamsFn levelParamNames levels (Constant const) _ =
+      Just $ updateConstant const (map (Level.instantiate levelParamNames levels) (constLevels const))
 
-    instantiate_univ_params_fn level_param_names levels (Sort sort) _ =
-      Just $ update_sort sort (Level.instantiate level_param_names levels (sort_level sort))
+    instantiateLevelParamsFn levelParamNames levels (Sort sort) _ =
+      Just $ updateSort sort (Level.instantiate levelParamNames levels (sortLevel sort))
 
-    instantiate_univ_params_fn _ _ _ _ = Nothing
+    instantiateLevelParamsFn _ _ _ _ = Nothing
 
 -- Abstract locals
 
-abstract_pi local body = abstract_binding_seq True [local] body
-abstract_lambda local body = abstract_binding_seq False [local] body
+abstractPi local body = abstractBindingSeq True [local] body
+abstractLambda local body = abstractBindingSeq False [local] body
 
-abstract_pi_seq locals body = abstract_binding_seq True locals body
-abstract_lambda_seq locals body = abstract_binding_seq False locals body
+abstractPiSeq locals body = abstractBindingSeq True locals body
+abstractLambdaSeq locals body = abstractBindingSeq False locals body
 
-abstract_binding_seq is_pi locals body =
-  let abstract_body = abstract_locals locals body
-      abstract_types = map (\(local,i) -> abstract_locals (List.take i locals) (local_type local)) (zip locals [0..])
+abstractBindingSeq isPi locals body =
+  let abstractBody = abstractLocals locals body
+      abstractTypes = map (\(local,i) -> abstractLocals (List.take i locals) (localType local)) (zip locals [0..])
   in
-   foldr (\(abstract_type,local) new_body -> mk_binding is_pi (local_name local) abstract_type new_body (local_info local))
-   abstract_body (zip abstract_types locals)
+   foldr (\(abstractType,local) new_body -> mkBinding isPi (localName local) abstractType new_body (localInfo local))
+   abstractBody (zip abstractTypes locals)
 
-abstract_locals locals body = replace_in_expr (abstract_locals_fn locals) body
+abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
   where
-    abstract_locals_fn :: [LocalData] -> ReplaceFn
-    abstract_locals_fn locals e offset
-      | not (expr_has_local e) = Just e
+    abstractLocalsFn :: [LocalData] -> ReplaceFn
+    abstractLocalsFn locals e offset
+      | not (exprHasLocal e) = Just e
 
-    abstract_locals_fn locals e@(Local l) offset =
-      case List.findIndex (\local -> local_name local == local_name l) locals of
+    abstractLocalsFn locals e@(Local l) offset =
+      case List.findIndex (\local -> localName local == localName l) locals of
         Nothing -> Just e
-        Just idx -> Just (mk_var $ offset + (length locals - 1 - idx))
+        Just idx -> Just (mkVar $ offset + (length locals - 1 - idx))
 
-    abstract_locals_fn _ _  _ = Nothing
+    abstractLocalsFn _ _  _ = Nothing
 
 -- Misc
 
-body_of_lambda e = case e of
-  Lambda lam -> body_of_lambda (binding_body lam)
+bodyOfLambda e = case e of
+  Lambda lam -> bodyOfLambda (bindingBody lam)
   _ -> e
 
-is_constant (Constant _) = True
-is_constant _ = False
+isConstant (Constant _) = True
+isConstant _ = False
 
-maybe_constant (Constant c) = Just c
-maybe_constant _ = Nothing
+getConstant (Constant c) = Just c
+getConstant _ = Nothing

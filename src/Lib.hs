@@ -3,6 +3,10 @@ module Lib
     ) where
 import Kernel.Name
 import Kernel.Level
+import Kernel.Expr
 
 someFunc :: IO ()
-someFunc = print $ mkName ["eq","rec"]
+someFunc = do
+  print $ mkName ["eq","rec"]
+  print $ mkSucc mkZero
+  print $ mkConstant (mkName ["foo"]) [mkZero, mkSucc mkZero]

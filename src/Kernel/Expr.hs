@@ -9,10 +9,10 @@ API for expressions
 -}
 module Kernel.Expr (
   Expr
-  , get_operator, get_app_args, get_app_op_args
-  , mk_var, mk_local, mk_local_default, mk_constant, mk_sort
-  , mk_lambda, mk_lambda_default, mk_pi, mk_pi_default
-  , mk_app, mk_app_seq
+  , mkVar, mkLocal, mkLocalDefault, mkConstant, mkSort
+  , mkLambda, mkLambdaDefault, mkPi, mkPiDefault
+  , mkApp, mkAppSeq
+  , getOperator, getAppArgs, getAppOpArgs
    -- TODO(dhs): need to expose more!
     ) where
 import Kernel.Expr.Internal
