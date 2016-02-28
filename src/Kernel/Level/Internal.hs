@@ -51,7 +51,11 @@ mkMax lhs rhs = mkMaxCore lhs rhs where
   mkMaxCore lhs (Max args2) = Max $ uncurry (Map.insertWith max) (toLevelOffset lhs) args2
   mkMaxCore Zero rhs = rhs
   mkMaxCore lhs Zero = lhs
-  mkMaxCore lhs rhs = Max . Map.fromList $ map toLevelOffset [lhs, rhs]
+  mkMaxCore lhs rhs =
+    let (lhs', k1) = toLevelOffset lhs
+        (rhs', k2) = toLevelOffset rhs in
+     if lhs' == rhs' then (if k1 < k2 then lhs else rhs) else
+       Max . Map.fromList $ map toLevelOffset [lhs, rhs]
 
 {-
 IMax invariant:
