@@ -10,16 +10,18 @@ API for expressions
 module Kernel.Expr (
   Expr(..)
   , LocalData, VarData, SortData, ConstantData, BindingData, AppData
-  , mkVar, mkLocal, mkLocalDefault, mkConstant, mkSort
+  , mkVar, mkLocal, mkLocalDefault, mkLocalData, mkConstant, mkSort
   , mkLambda, mkLambdaDefault, mkPi, mkPiDefault
   , mkApp, mkAppSeq
   , varIdx
   , sortLevel
   , localName, localType
   , constName, constLevels
-  , bindingDomain, bindingBody
+  , bindingName, bindingDomain, bindingBody, bindingInfo
   , appFn, appArg, getOperator, getAppArgs, getAppOpArgs
-  , exprHasLocal, exprHasLevelParam
+  , exprHasLocal, exprHasLevelParam, hasFreeVars, closed
+  , abstractPi, abstractPiSeq, abstractLambda, abstractLambdaSeq
+  , instantiate, instantiateLevelParams
    -- TODO(dhs): need to expose more!
     ) where
 import Kernel.Expr.Internal

@@ -11,6 +11,7 @@ module Kernel.Env (
   Decl
 , declName, declLPNames, declType, declVal, declWeight
 , Env
+, envGlobalNames
 , mkStdEnv
 , isImpredicative, isPropProofIrrel
 , mkDefinition, mkAxiom
