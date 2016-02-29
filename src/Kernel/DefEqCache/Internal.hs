@@ -30,7 +30,7 @@ data DefEqCache = DefEqCache {
 
 makeLenses ''DefEqCache
 
-emptyDefEqCache = DefEqCache DS.empty Map.empty
+mkDefEqCache = DefEqCache DS.empty Map.empty
 
 isEquiv :: Expr -> Expr -> DefEqCache -> (Bool, DefEqCache)
 isEquiv e1 e2 defEqCache = flip runState defEqCache $ do

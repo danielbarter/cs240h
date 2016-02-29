@@ -14,12 +14,13 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level, Kernel.Level.Internal, Kernel.Expr, Kernel.Expr.Internal, Kernel.Env.Internal, Kernel.InductiveExt, Kernel.DefEqCache.Internal
+  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level, Kernel.Level.Internal, Kernel.Expr, Kernel.Expr.Internal, Kernel.Env.Internal, Kernel.Env, Kernel.InductiveExt, Kernel.DefEqCache.Internal, Kernel.DefEqCache, Kernel.TypeChecker.Internal
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , lens-simple
                      , mtl
                      , disjoint-set >= 0.2
+                     , transformers
   default-language:    Haskell2010
 
 executable leantc-exe

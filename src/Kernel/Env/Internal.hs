@@ -27,7 +27,7 @@ import qualified Data.Maybe as Maybe
 
 data Decl = Decl {
   declName :: Name,
-  declLevelParamNames :: [Name],
+  declLPNames :: [Name],
   declType :: Expr,
   declVal :: Maybe Expr,
   declWeight :: Int
