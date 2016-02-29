@@ -7,7 +7,8 @@ Maintainer  : daniel.selsam@gmail.com
 
 Implementation of type checker
 -}
-{-# TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 module Kernel.TypeChecker.Internal where
 
 import Control.Monad.State
@@ -16,6 +17,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 
 import Data.List (nub,find,genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
+import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~))
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -53,10 +55,12 @@ data TypeCheckerR = TypeCheckerR {
 }
 
 data TypeCheckerS = TypeCheckerS {
-  tcsNextId :: Integer ,
-  tcsDefEqCache :: DefEqCache,
-  tcsInferTypeCache :: Map Expr Expr
+  _tcsNextId :: Integer ,
+  _tcsDefEqCache :: DefEqCache,
+  _tcsInferTypeCache :: Map Expr Expr
   }
+
+makeLenses ''TypeCheckerS
 
 mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
@@ -145,20 +149,18 @@ ensurePi e = case e of
 inferType :: Expr -> TCMethod Expr
 inferType e = do
   checkClosed e
-  inferTypeCache <- gets tcsInferTypeCache
+  inferTypeCache <- use tcsInferTypeCache
   case Map.lookup e inferTypeCache of
     Just ty -> return ty
     Nothing -> do
       ty <- case e of
         Local local -> return $ localType local
-        Sort sort -> let level = sortLevel sort in checkLevel level >> (return . mkSort . Level.mkSucc) level
+        Sort sort -> checkLevel (sortLevel sort) >> (return . mkSort . Level.mkSucc . sortLevel) sort
         Constant constant -> inferConstant constant
         Lambda lambda -> inferLambda lambda
         Pi pi -> inferPi pi
         App app -> inferApp app
-      -- TODO(dhs): lenses
-      inferTypeCache <- gets tcsInferTypeCache
-      modify (\tc -> tc { tcsInferTypeCache = Map.insert e ty inferTypeCache })
+      inferTypeCache %= Map.insert e ty
       return ty
 
 inferConstant :: ConstantData -> TCMethod Expr
