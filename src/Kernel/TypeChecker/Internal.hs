@@ -204,3 +204,52 @@ inferApp app = do
   isEq <- isDefEq (bindingDomain fnTyAsPi) argTy
   if isEq then return $ instantiate (bindingBody fnTyAsPi) (appArg app)
     else throwE $ TypeMismatchAtApp (bindingDomain fnTyAsPi) argTy
+
+{- Weak-head normal form (whnf) -}
+
+whnf :: Expr -> TCMethod Expr
+whnf e = do
+  e1 <- whnfCoreDelta 0 e
+  e2Maybe <- normalizeExt e1
+  case e2Maybe of
+    Nothing -> return e1
+    Just e2 -> whnf e2
+
+whnfCoreDelta :: Integer -> Expr -> TCMethod Expr
+whnfCoreDelta w e = do
+  e1 <- whnfCore e
+  e2 <- unfoldNames w e1
+  if e == e2 then return e else whnfCoreDelta w e2
+
+whnfCore :: Expr -> TCMethod Expr
+whnfCore e = case e of
+  App app -> do
+    let (fn, arg) = (appFn app, appArg app)
+    fnWhnf <- whnfCore fn
+    case fnWhnf of
+      Lambda lam -> whnfCore (instantiate (bindingBody lam) arg)
+      otherwise -> if fnWhnf == fn then return e else whnfCore (mkApp fnWhnf arg)
+  _ -> return e
+
+unfoldNames :: Integer -> Expr -> TCMethod Expr
+unfoldNames w e = case e of
+  App app -> let (op, args) = getAppOpArgs e in
+              flip mkAppSeq args <$> unfoldNameCore w op
+  _ -> unfoldNameCore w e
+
+unfoldNameCore :: Integer -> Expr -> TCMethod Expr
+unfoldNameCore w e = case e of
+  Constant const -> do
+    env <- asks tcrEnv
+    maybe (return e)
+      (\d -> case declVal d of
+          Just dVal
+            | declWeight d >= w && length (constLevels const) == length (declLPNames d)
+              -> unfoldNameCore w (instantiateLevelParams dVal (declLPNames d) $ constLevels const)
+          _ -> return e)
+      (envLookupDecl env (constName const))
+  _ -> return e
+
+-- TODO(dhs): check for bools and support HoTT
+normalizeExt :: Expr -> TCMethod (Maybe Expr)
+normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e)
