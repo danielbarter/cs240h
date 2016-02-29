@@ -9,4 +9,5 @@ Union-find for caching is_def_eq
 -}
 
 module Kernel.DefEqCache (DefEqCache, isEquiv, addEquiv, mkDefEqCache) where
+-- TODO DeqCache.isEquiv
 import Kernel.DefEqCache.Internal

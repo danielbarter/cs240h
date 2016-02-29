@@ -300,12 +300,15 @@ abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
 
 -- Misc
 
+bodyOfLambda :: Expr -> Expr
 bodyOfLambda e = case e of
   Lambda lam -> bodyOfLambda (bindingBody lam)
   _ -> e
 
+isConstant :: Expr -> Bool
 isConstant (Constant _) = True
 isConstant _ = False
 
-getConstant (Constant c) = Just c
-getConstant _ = Nothing
+maybeConstant :: Expr -> Maybe ConstantData
+maybeConstant (Constant c) = Just c
+maybeConstant _ = Nothing
