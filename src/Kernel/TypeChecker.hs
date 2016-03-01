@@ -8,7 +8,10 @@ Maintainer  : daniel.selsam@gmail.com
 API for type checker
 -}
 module Kernel.TypeChecker (
-  TypeError, TCMethod
+  IndDecl(IndDecl), Env
+  , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
+  , envLookupDecl, envAddDecl
+  , TypeError, TCMethod
   , tcEval, tcRun
   , check, whnf, isDefEq
   ) where

@@ -25,9 +25,7 @@ import Kernel.Name
 import qualified Kernel.Level as Level
 import Kernel.Level (Level)
 import Kernel.Expr
-import Kernel.Env
-import Kernel.InductiveExt (IndDecl)
-import qualified Kernel.InductiveExt as Ext
+import Kernel.TypeChecker (IndDecl(IndDecl), Env, TypeError, TCMethod, envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule, envLookupDecl, envAddDecl)
 import qualified Kernel.TypeChecker as TC
 
 import qualified Data.Map as Map

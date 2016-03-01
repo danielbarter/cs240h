@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level, Kernel.Level.Internal, Kernel.Expr, Kernel.Expr.Internal, Kernel.Env.Internal, Kernel.Env, Kernel.InductiveExt, Kernel.DeqCache.Internal, Kernel.DeqCache, Kernel.TypeChecker.Internal, Kernel.TypeChecker, Kernel.Inductive.Internal
+  exposed-modules:     Lib, Kernel.Name, Kernel.Name.Internal, Kernel.Level, Kernel.Level.Internal, Kernel.Expr, Kernel.Expr.Internal, Kernel.DeqCache.Internal, Kernel.DeqCache, Kernel.TypeChecker.Internal, Kernel.TypeChecker, Kernel.Inductive.Internal
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , lens-simple

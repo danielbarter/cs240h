@@ -4,8 +4,7 @@ module Lib
 import Kernel.Name
 import Kernel.Level
 import Kernel.Expr
-import Kernel.InductiveExt
-import Kernel.Env.Internal
+import Kernel.TypeChecker
 
 someFunc :: IO ()
 someFunc = do

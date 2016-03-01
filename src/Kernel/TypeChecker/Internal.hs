@@ -19,6 +19,9 @@ import Control.Monad.Trans.Maybe
 import Data.List (nub, (!!), take, drop, splitAt, length)
 import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~), (%%=))
 
+import qualified Data.Set as Set
+import Data.Set (Set)
+
 import qualified Data.Map as Map
 import Data.Map (Map)
 
@@ -30,10 +33,128 @@ import Kernel.Name
 import qualified Kernel.Level as Level
 import Kernel.Level (Level)
 import Kernel.Expr
-import Kernel.Env
 import qualified Kernel.DeqCache as DeqCache
 import Kernel.DeqCache (DeqCache, mkDeqCache)
-import Kernel.InductiveExt
+
+import qualified Data.Maybe as Maybe
+
+{- Inductive extension -}
+
+data IntroRule = IntroRule Name Expr deriving (Show)
+
+data IndDecl = IndDecl {
+  _indDeclNumParams :: Integer,
+  _indDeclLPNames :: [Name],
+  _indDeclName :: Name,
+  _indDeclType :: Expr,
+  _indDeclIntroRules :: [IntroRule]
+  } deriving (Show)
+
+makeLenses ''IndDecl
+
+data ElimInfo = ElimInfo {
+  elimInfoIndName :: Name, -- ^ name of the inductive datatype associated with eliminator
+  elimInfoLevelParamNames :: [Name], -- ^ level parameter names used in computational rule
+  elimInfoNumParams :: Int, -- ^ number of global parameters A
+  elimInfoNumACe :: Int, -- ^ sum of number of global parameters A, type formers C, and minor preimises e.
+  elimInfoNumIndices :: Int, -- ^ number of inductive datatype indices
+  -- | We support K-like reduction when the inductive datatype is in Type.{0} (aka Prop), proof irrelevance is enabled,
+  -- it has only one introduction rule, the introduction rule has "0 arguments".
+  elimInfoKTarget :: Bool,
+  elimInfoDepElim :: Bool -- ^ elimInfoDepElim == true if dependent elimination is used for this eliminator
+  } deriving (Show)
+
+-- | Represents a single computation rule
+data CompRule = CompRule {
+  compRuleElimName :: Name, -- ^ name of the corresponding eliminator
+  compRuleNumArgs :: Int, -- ^ sum of number of rec_args and nonrec_args in the corresponding introduction rule.
+  compRuleRHS :: Expr -- ^ computational rule RHS: Fun (A, C, e, b, u), (e_k_i b u v)
+  } deriving (Show)
+
+data InductiveExt = InductiveExt {
+  _indExtElimInfos :: Map Name ElimInfo,
+  _indExtCompRules :: Map Name CompRule,
+  _indExtIntroNameToIndName :: Map Name Name,
+  _indExtIndDecls :: Map Name IndDecl
+  } deriving (Show)
+
+makeLenses ''InductiveExt
+
+mkEmptyInductiveExt = InductiveExt Map.empty Map.empty Map.empty Map.empty
+
+{- Environments -}
+
+data Decl = Decl {
+  declName :: Name,
+  declLPNames :: [Name],
+  declType :: Expr,
+  declVal :: Maybe Expr,
+  declWeight :: Int
+  } deriving (Eq,Show)
+
+data Env = Env {
+  _envDecls :: Map Name Decl,
+  _envGlobalNames :: Set Name,
+  _envIndExt :: InductiveExt,
+  _envQuotEnabled :: Bool,
+  _envPropProofIrrel :: Bool,
+  _envPropImpredicative :: Bool
+  } deriving (Show)
+
+makeLenses ''Env
+
+mkStdEnv = Env Map.empty Set.empty mkEmptyInductiveExt True True True
+
+{- Decls -}
+
+mkDefinition :: Env -> Name -> [Name] -> Expr -> Expr -> Decl
+mkDefinition env name levelParamNames ty val =
+  Decl name levelParamNames ty (Just val) (1 + getMaxDeclWeight env val)
+
+mkAxiom :: Name -> [Name] -> Expr -> Decl
+mkAxiom name levelParamNames ty = Decl name levelParamNames ty Nothing 0
+
+isDefinition :: Decl -> Bool
+isDefinition decl = Maybe.isJust $ declVal decl
+
+getMaxDeclWeight :: Env -> Expr -> Int
+getMaxDeclWeight env e = case e of
+  Var _ -> 0
+  Local local -> getMaxDeclWeight env (localType local)
+  Constant const -> maybe 0 declWeight (envLookupDecl (constName const) env)
+  Sort _ -> 0
+  Lambda lam -> getMaxDeclWeight env (bindingDomain lam) `max` getMaxDeclWeight env (bindingBody lam)
+  Pi pi -> getMaxDeclWeight env (bindingDomain pi) `max` getMaxDeclWeight env (bindingBody pi)
+  App app -> getMaxDeclWeight env (appFn app) `max` getMaxDeclWeight env (appArg app)
+
+
+envLookupDecl :: Name -> Env -> Maybe Decl
+envLookupDecl name  = Map.lookup name . view envDecls
+
+envAddDecl :: Decl -> Env -> Env
+envAddDecl decl env = case envLookupDecl (declName decl) env of
+                       Nothing -> over envDecls (Map.insert (declName decl) decl) env
+
+envHasGlobalLevel :: Name -> Env -> Bool
+envHasGlobalLevel name = Set.member name . view envGlobalNames
+
+envAddGlobalLevel :: Name -> Env -> Env
+envAddGlobalLevel name env = case envHasGlobalLevel name env of
+                              False -> over envGlobalNames (Set.insert name) env
+
+
+envAddIndDecl :: IndDecl -> Env -> Env
+envAddIndDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (view indDeclName idecl) idecl
+
+envAddIntroRule :: Name -> Name -> Env -> Env
+envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName) $ Map.insert irName indName
+
+envAddElimInfo :: ElimInfo -> Env -> Env
+envAddElimInfo elimInfo = over (envIndExt . indExtElimInfos) $ Map.insert (elimInfoIndName elimInfo) elimInfo
+
+envAddCompRule :: Name -> CompRule -> Env -> Env
+envAddCompRule irName compRule = over (envIndExt . indExtCompRules) $ Map.insert irName compRule
+
 
 {- TCMethods -}
 
