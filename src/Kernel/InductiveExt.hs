@@ -21,7 +21,7 @@ import Data.Map (Map)
 
 data IntroRule = IntroRule Name Expr deriving (Show)
 
-data InductiveDecl = InductiveDecl {
+data IndDecl = IndDecl {
   _indDeclNumParams :: Integer,
   _indDeclLPNames :: [Name],
   _indDeclName :: Name,
@@ -29,7 +29,7 @@ data InductiveDecl = InductiveDecl {
   _indDeclIntroRules :: [IntroRule]
   } deriving (Show)
 
-makeLenses ''InductiveDecl
+makeLenses ''IndDecl
 
 data ElimInfo = ElimInfo {
   elimInfoIndName :: Name, -- ^ name of the inductive datatype associated with eliminator
@@ -54,7 +54,7 @@ data InductiveExt = InductiveExt {
   _indExtElimInfos :: Map Name ElimInfo,
   _indExtCompRules :: Map Name CompRule,
   _indExtIntroNameToIndName :: Map Name Name,
-  _indExtIndDecls :: Map Name InductiveDecl
+  _indExtIndDecls :: Map Name IndDecl
   } deriving (Show)
 
 makeLenses ''InductiveExt

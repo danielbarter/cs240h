@@ -557,7 +557,7 @@ toIntroWhenK einfo e = do
 --   name of the first introduction rule. Return 'Nothing' otherwise.
 getFirstIntro :: Env -> Name -> Maybe Name
 getFirstIntro env opName = do
-  InductiveDecl _ _ _ _ [IntroRule irName _] <- Map.lookup opName $ view (envIndExt . indExtIndDecls) env
+  IndDecl _ _ _ _ [IntroRule irName _] <- Map.lookup opName $ view (envIndExt . indExtIndDecls) env
   return irName
 
 mkNullaryIntro :: Env -> Expr -> Int -> Maybe Expr

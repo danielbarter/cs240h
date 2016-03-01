@@ -85,8 +85,8 @@ envAddGlobalLevel name env = case envHasGlobalLevel name env of
 
 {- Inductive extension -}
 
-envAddInductiveDecl :: InductiveDecl -> Env -> Env
-envAddInductiveDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (view indDeclName idecl) idecl
+envAddIndDecl :: IndDecl -> Env -> Env
+envAddIndDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (view indDeclName idecl) idecl
 
 envAddIntroRule :: Name -> Name -> Env -> Env
 envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName) $ Map.insert irName indName

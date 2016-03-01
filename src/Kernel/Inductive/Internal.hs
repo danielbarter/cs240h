@@ -26,6 +26,7 @@ import qualified Kernel.Level as Level
 import Kernel.Level (Level)
 import Kernel.Expr
 import Kernel.Env
+import Kernel.InductiveExt (IndDecl)
 import qualified Kernel.InductiveExt as Ext
 import qualified Kernel.TypeChecker as TC
 
@@ -35,12 +36,14 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
+import Lens.Simple (makeLenses, use, view, over, (%=), (.=), (%%=))
+
 import Data.List (genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
 import qualified Data.Maybe as Maybe
 
 import Debug.Trace
 
-data InductiveDeclError = NumParamsMismatchInInductiveDecl Integer Integer
+data IndDeclError = NumParamsMismatchInIndDecl Integer Integer
                         | ArgDoesNotMatchInductiveParameters Integer Name
                         | UniLevelOfArgTooBig Integer Name Level Level
                         | NonRecArgAfterRecArg Integer Name
@@ -48,7 +51,7 @@ data InductiveDeclError = NumParamsMismatchInInductiveDecl Integer Integer
                         | InvalidReturnType Name
                         | NonPosOccurrence Integer Name
                         | NonValidOccurrence Integer Name
-                        | TypeCheckError TypeChecker.TypeError String
+                        | TypeCheckError TC.TypeError String
                         deriving (Eq,Show)
 
 data ElimInfo = ElimInfo {
@@ -62,7 +65,7 @@ data AddInductiveS = AddInductiveS {
   -- TODO(dhs): much better to put these all in a different structure and populate them at once
   -- (or possibly into a few different ones if they are populated at different stages)
   _addIndEnv :: Env,
-  _addIndIDecl :: InductiveDecl,
+  _addIndIDecl :: IndDecl,
 
   _addIndIsDefinitelyNotZero :: Bool,
   _addIndNextId :: Integer,
@@ -80,7 +83,7 @@ data AddInductiveS = AddInductiveS {
 
 makeLenses ''AddInductiveS
 
-mkAddInductiveS :: Env -> InductiveDecl -> AddInductiveS
+mkAddInductiveS :: Env -> IndDecl -> AddInductiveS
 mkAddInductiveS env idecl = AddInductiveS {
   _addIndEnv = env,
   _addIndIDecl = idecl,
@@ -99,7 +102,7 @@ mkAddInductiveS env idecl = AddInductiveS {
   _addIndKTarget = False
   }
 
-type AddInductiveMethod = ExceptT InductiveDeclError (State AddInductiveS)
+type AddInductiveMethod = ExceptT IndDeclError (State AddInductiveS)
 
 {- Misc -}
 -- TODO(dhs): put these at the bottom
@@ -119,12 +122,10 @@ indAssert b err = if b then return () else throwE err
 mkFreshName :: AddInductiveMethod Name
 mkFreshName = gensym >>= mkSystemNameI
 
-addInductive :: Env -> InductiveDecl -> Either InductiveDeclError Env
+addInductive :: Env -> IndDecl -> Either IndDeclError Env
 addInductive env idecl =
-  let (a, s) = runReaderT (runStateT (runExceptT addInductiveCore)
-                          mkAddInductiveS
-                          (mkAddInductiveR env idecl) in
-  case a of
+  let (a, s) = runState (runExceptT addInductiveCore) (mkAddInductiveS env idecl) in
+   case a of
     Left err -> Left err
     Right () -> Right $ view addIndEnv s
 
@@ -139,10 +140,10 @@ addInductiveCore = do
 
 checkIndType :: AddInductiveMethod ()
 checkIndType = do
-  (InductiveDecl numParams lpNames name ty introRules) <- asks _addIndIDecl
+  (IndDecl numParams lpNames name ty introRules) <- asks _addIndIDecl
   checkType ty lpNames
   let (rest, paramLocals) = telescopePiN numParams ty
-  indAssert (length locals == numParams) $ NumParamsMismatchInInductiveDecl (length locals) numParams
+  indAssert (length paramLocals == numParams) $ NumParamsMismatchInIndDecl (length locals) numParams
   let (body, indexLocals) = telescopePi rest
   sort <- ensureSort body
   lpNames <- map mkLevelParam . indDeclLPNames <$> asks addIndIDecl
@@ -155,10 +156,10 @@ checkIndType = do
 -- Add all datatype declarations to environment.
 declareIndType :: AddInductiveMethod ()
 declareIndType = do
-  idecl@(InductiveDecl numParams lpNames name ty introRules) <- use addIndIDecl
+  idecl@(IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
   -- TODO(dhs): put Env and TypeChecker in the same module, and only expose `envAddAxiom` and `envAddDefinition`
   addIndEnv %= envAddAxiom lpNames name ty
-  addIndEnv %= envAddInductiveDecl idecl
+  addIndEnv %= envAddIndDecl idecl
 
 
 {- Check if
@@ -171,7 +172,7 @@ declareIndType = do
 -}
 checkIntroRules :: AddInductiveMethod ()
 checkIntroRules = do
-  (InductiveDecl numParams lpNames name ty introRules) <- use addIndIDecl
+  (IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
   mapM_ checkIntroRule introRules
     where
       checkIntroRule :: IntroRule -> AddInductiveMethod ()
@@ -200,28 +201,28 @@ checkIntroRules = do
                      argIsRec <- isRecArg domainTy
                      indAssert (not foundRec || argIsRec) (NonRecArgAfterRecArg paramNum name)
                      ty <- if argIsRec
-                           then indAssert (closed (bindingBody pi)) (InvalidRecArg param_num name) >> return (bindingBody pi)
+                           then indAssert (closed (bindingBody pi)) (InvalidRecArg paramNum name) >> return (bindingBody pi)
                            else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
-                     checkIntroRuleCore (param_num+1) argIsRec name ty
+                     checkIntroRuleCore (paramNum+1) argIsRec name ty
          _ -> isValidIndApp ty >>= flip indAssert (InvalidReturnType name)
 
 
-
+{-
 
 
 
 
 -- Check if ty contains only positive occurrences of the inductive datatypes being declared.
-check_positivity ty name param_num = do
+check_positivity ty name paramNum = do
   ty <- whnf ty
   it_occ <- has_it_occ ty
   if not it_occ then return () else
     case ty of
       Pi pi -> do it_occ <- has_it_occ (bindingDomain pi)
-                  ind_assert (not it_occ) (NonPosOccurrence param_num name)
+                  ind_assert (not it_occ) (NonPosOccurrence paramNum name)
                   local <- mk_local_for pi
-                  check_positivity (instantiate (bindingBody pi) $ Local local) name param_num
-      _ -> is_valid_it_app ty >>= flip ind_assert (NonValidOccurrence param_num name)
+                  check_positivity (instantiate (bindingBody pi) $ Local local) name paramNum
+      _ -> is_valid_it_app ty >>= flip ind_assert (NonValidOccurrence paramNum name)
 
 -- Return true if ty does not contain any occurrence of a datatype being declared.
 has_it_occ ty = do
@@ -270,7 +271,7 @@ is_valid_it_app_core ty = do
 -- Add all introduction rules (aka constructors) to environment.
 declareIntroRules =
   gets m_idecls >>=
-  mapM_ (\(InductiveDecl it_name _ intro_rules) -> do
+  mapM_ (\(IndDecl it_name _ intro_rules) -> do
             mapM_ (\(IntroRule ir_name ty) -> do
                       level_names <- gets m_level_names
                       cdecl <- certify_declaration ir_name level_names ty
@@ -308,9 +309,9 @@ elim_only_at_universe_zero_core = do
   if is_impredicative env && is_not_zero then throwE False else return ()
   case idecls of
     d1:d2:_ -> throwE True
-    [(InductiveDecl _ _ [])] -> throwE False
-    [(InductiveDecl _ _ (_:_:_))] -> throwE True
-    [(InductiveDecl _ _ [(IntroRule name ty)])] -> do
+    [(IndDecl _ _ [])] -> throwE False
+    [(IndDecl _ _ (_:_:_))] -> throwE True
+    [(IndDecl _ _ [(IntroRule name ty)])] -> do
       {- We have only one introduction rule, the final check is, the type of each argument that is not a parameter:
           1- It must live in Type.{0}, *OR*
           2- It must occur in the return type. (this is essentially what is called a non-uniform parameter in Coq).
@@ -322,12 +323,12 @@ elim_only_at_universe_zero_core = do
         (map Local args_to_check)
 
 check_condition1 :: Expression -> Integer -> AddInductiveMethod (Expression,[LocalData])
-check_condition1 (Pi pi) param_num = do
+check_condition1 (Pi pi) paramNum = do
   local <- mk_local_for pi
   body <- return $ instantiate (bindingBody pi) (Local local)
-  (ty,rest) <- check_condition1 body (param_num+1)
+  (ty,rest) <- check_condition1 body (paramNum+1)
   num_params <- gets m_num_params
-  if param_num >= num_params
+  if paramNum >= num_params
     then do sort <- ensure_type (bindingDomain pi)
             return $ if not (is_zero (sort_level sort)) then (ty,local : rest) else (ty,rest)
     else return (ty,rest)
@@ -346,8 +347,8 @@ init_elim_info = do
   mapM_ (uncurry populate_C_indices_major) (zip idecls [0..])
   mapM_ (uncurry populate_minor_premises) (zip idecls [0..])
 
-populate_C_indices_major :: InductiveDecl -> Integer -> AddInductiveMethod ()
-populate_C_indices_major (InductiveDecl name ty intro_rules) d_idx = do
+populate_C_indices_major :: IndDecl -> Integer -> AddInductiveMethod ()
+populate_C_indices_major (IndDecl name ty intro_rules) d_idx = do
   (indices,body) <- build_indices ty 0
   fresh_name_major <- mk_fresh_name
   it_consts <- gets m_it_consts
@@ -368,21 +369,21 @@ populate_C_indices_major (InductiveDecl name ty intro_rules) d_idx = do
   modify (\ind_data -> ind_data { m_elim_infos = (m_elim_infos ind_data) ++ [ElimInfo c indices major_premise []] })
 
 build_indices :: Expression -> Integer -> AddInductiveMethod ([LocalData],Expression)
-build_indices (Pi pi) param_num = do
+build_indices (Pi pi) paramNum = do
   num_params <- gets m_num_params
-  use_param <- return $ param_num < num_params
+  use_param <- return $ paramNum < num_params
   local <- if use_param
-           then liftM (flip genericIndex param_num . m_param_consts) get
+           then liftM (flip genericIndex paramNum . m_param_consts) get
            else mk_local_for pi
-  (indices,body) <- build_indices (instantiate (bindingBody pi) (Local local)) (param_num+1)
+  (indices,body) <- build_indices (instantiate (bindingBody pi) (Local local)) (paramNum+1)
   if use_param
     then return (indices,body)
     else return (local:indices,body)
 
-build_indices ty param_num = return ([],ty)
+build_indices ty paramNum = return ([],ty)
 
-populate_minor_premises :: InductiveDecl -> Integer -> AddInductiveMethod ()
-populate_minor_premises (InductiveDecl name ty intro_rules) d_idx = do
+populate_minor_premises :: IndDecl -> Integer -> AddInductiveMethod ()
+populate_minor_premises (IndDecl name ty intro_rules) d_idx = do
   env <- gets m_env
   it_level <- liftM (flip genericIndex d_idx . m_it_levels) get
   -- A declaration is target for K-like reduction when it has one intro,
@@ -391,19 +392,19 @@ populate_minor_premises (InductiveDecl name ty intro_rules) d_idx = do
   -- In the populate_minor_premises_intro_rule we check if the intro rule has 0 arguments.
   mapM_ (populate_minor_premises_ir d_idx) intro_rules
 
-build_ir_args rec_args nonrec_args ir_name ir_type param_num = do
+build_ir_args rec_args nonrec_args ir_name ir_type paramNum = do
   num_params <- gets m_num_params
-  param_const <- liftM (flip genericIndex param_num . m_param_consts) get
+  param_const <- liftM (flip genericIndex paramNum . m_param_consts) get
   case ir_type of
-    Pi pi | param_num < num_params -> build_ir_args rec_args nonrec_args ir_name (instantiate (bindingBody pi) (Local param_const)) (param_num+1)
+    Pi pi | paramNum < num_params -> build_ir_args rec_args nonrec_args ir_name (instantiate (bindingBody pi) (Local param_const)) (paramNum+1)
           | otherwise -> do
       -- intro rule has an argument
       modify (\ind_data -> ind_data { m_K_target = False })
       local <- mk_local_for pi
       is_rec_arg <- is_rec_argument (bindingDomain pi)
       if is_rec_arg
-        then build_ir_args (rec_args ++ [local]) nonrec_args ir_name (instantiate (bindingBody pi) (Local local)) (param_num+1)
-        else build_ir_args rec_args (nonrec_args ++ [local]) ir_name (instantiate (bindingBody pi) (Local local)) (param_num+1)
+        then build_ir_args (rec_args ++ [local]) nonrec_args ir_name (instantiate (bindingBody pi) (Local local)) (paramNum+1)
+        else build_ir_args rec_args (nonrec_args ++ [local]) ir_name (instantiate (bindingBody pi) (Local local)) (paramNum+1)
     _ -> return (rec_args,nonrec_args,ir_type)
 
 populate_minor_premises_ir d_idx (IntroRule ir_name ir_type) = do
@@ -464,7 +465,7 @@ get_I_indices rec_arg_ty = do
   case maybe_it_idx of
     Just d_idx -> return (d_idx,genericDrop num_params (get_app_args rec_arg_ty))
 
-declare_elim_rule (InductiveDecl name ty intro_rules) d_idx = do
+declare_elim_rule (IndDecl name ty intro_rules) d_idx = do
   elim_info <- liftM (flip genericIndex d_idx . m_elim_infos) get
   c_app <- return $ mk_app_seq (Local $ m_C elim_info) (map Local $ m_indices elim_info)
   dep_elim <- gets m_dep_elim
@@ -483,7 +484,7 @@ get_elim_name name = name_append_s name "rec"
 get_elim_name_idx it_idx = do
   idecls <- gets m_idecls
   case genericIndex idecls it_idx of
-    InductiveDecl name _ _ -> return $ get_elim_name name
+    IndDecl name _ _ -> return $ get_elim_name name
 
 abstract_all_introduction_rules elim_type =
   gets m_elim_infos >>= return .
@@ -517,7 +518,7 @@ mkCompRules = do
   elim_infos <- gets m_elim_infos
   mapM_ (uncurry mkCompRules_idecl) (zip idecls elim_infos)
 
-mkCompRules_idecl (InductiveDecl name ty intro_rules) (ElimInfo _ indices _ minor_premises) = do
+mkCompRules_idecl (IndDecl name ty intro_rules) (ElimInfo _ indices _ minor_premises) = do
   ext_add_elim name (genericLength indices)
   mapM_ (uncurry $ register_comp_rhs name) (zip intro_rules minor_premises)
 
@@ -595,8 +596,8 @@ is_def_eq e1 e2 = do
     Left tc_err -> throwE $ TypeCheckError tc_err "is_def_eq"
     Right (b,next) -> modify (\tc -> tc { m_next_id = next }) >> return b
 
-certify_ideclaration :: InductiveDecl -> AddInductiveMethod CertifiedDeclaration
-certify_ideclaration (InductiveDecl name ty intro_rules) = do
+certify_ideclaration :: IndDecl -> AddInductiveMethod CertifiedDeclaration
+certify_ideclaration (IndDecl name ty intro_rules) = do
   level_names <- gets m_level_names
   certify_declaration name level_names ty
 
@@ -656,3 +657,4 @@ ext_add_elim ind_name num_indices = do
 
 ext_add_comp_rhs ir_name elim_name num_rec_args_nonrec_args comp_rhs =
   update_m_env (ind_ext_add_comp_rhs ir_name elim_name num_rec_args_nonrec_args comp_rhs)
+-}

@@ -9,7 +9,7 @@ API for expressions
 -}
 module Kernel.Expr (
   Expr(..)
-  , LocalData, VarData, SortData, ConstantData, BindingData, AppData
+  , LocalData(LocalData), VarData, SortData, ConstantData(ConstantData), BindingData, AppData
   , mkVar, mkLocal, mkLocalDefault, mkLocalData, mkConstant, mkSort
   , mkLambda, mkLambdaDefault, mkPi, mkPiDefault
   , mkApp, mkAppSeq

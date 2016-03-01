@@ -17,6 +17,6 @@ module Kernel.Env (
 , isDefinition
 , envLookupDecl, envAddDecl
 , envHasGlobalLevel, envAddGlobalLevel
-, envAddInductiveDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
+, envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
 ) where
 import Kernel.Env.Internal
