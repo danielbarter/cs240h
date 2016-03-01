@@ -36,7 +36,7 @@ data Decl = Decl {
 data Env = Env {
   _envDecls :: Map Name Decl,
   _envGlobalNames :: Set Name,
-  _envInductiveExt :: InductiveExt,
+  _envIndExt :: InductiveExt,
   _envQuotEnabled :: Bool,
   _envPropProofIrrel :: Bool,
   _envPropImpredicative :: Bool
@@ -45,14 +45,6 @@ data Env = Env {
 makeLenses ''Env
 
 mkStdEnv = Env Map.empty Set.empty mkEmptyInductiveExt True True True
-
-{- Basic properties -}
-
-isImpredicative :: Env -> Bool
-isImpredicative = view envPropImpredicative
-
-isPropProofIrrel :: Env -> Bool
-isPropProofIrrel = view envPropProofIrrel
 
 {- Decls -}
 
@@ -94,13 +86,13 @@ envAddGlobalLevel name env = case envHasGlobalLevel name env of
 {- Inductive extension -}
 
 envAddInductiveDecl :: InductiveDecl -> Env -> Env
-envAddInductiveDecl idecl = over (envInductiveExt . indExtIndDecls) $ Map.insert (indDeclName idecl) idecl
+envAddInductiveDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (indDeclName idecl) idecl
 
 envAddIntroRule :: Name -> Name -> Env -> Env
-envAddIntroRule irName indName = over (envInductiveExt . indExtIntroNameToIndName) $ Map.insert irName indName
+envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName) $ Map.insert irName indName
 
 envAddElimInfo :: ElimInfo -> Env -> Env
-envAddElimInfo elimInfo = over (envInductiveExt . indExtElimInfos) $ Map.insert (elimInfoName elimInfo) elimInfo
+envAddElimInfo elimInfo = over (envIndExt . indExtElimInfos) $ Map.insert (elimInfoIndName elimInfo) elimInfo
 
 envAddCompRule :: Name -> CompRule -> Env -> Env
-envAddCompRule irName compRule = over (envInductiveExt . indExtCompRules) $ Map.insert irName compRule
+envAddCompRule irName compRule = over (envIndExt . indExtCompRules) $ Map.insert irName compRule

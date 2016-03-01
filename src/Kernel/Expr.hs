@@ -21,7 +21,7 @@ module Kernel.Expr (
   , appFn, appArg, getOperator, getAppArgs, getAppOpArgs
   , exprHasLocal, exprHasLevelParam, hasFreeVars, closed
   , abstractPi, abstractPiSeq, abstractLambda, abstractLambdaSeq
-  , instantiate, instantiateLevelParams
+  , instantiate, instantiateSeq, instantiateLevelParams
   , isConstant, maybeConstant
   , innerBodyOfLambda
    -- TODO(dhs): need to expose more!

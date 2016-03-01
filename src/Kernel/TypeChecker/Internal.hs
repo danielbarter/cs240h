@@ -16,7 +16,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 
-import Data.List (nub,find,genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
+import Data.List (nub, (!!), take, drop, splitAt, length)
 import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~), (%%=))
 
 import qualified Data.Map as Map
@@ -33,10 +33,11 @@ import Kernel.Expr
 import Kernel.Env
 import qualified Kernel.DeqCache as DeqCache
 import Kernel.DeqCache (DeqCache, mkDeqCache)
+import Kernel.InductiveExt
 
 {- TCMethods -}
 
-data TypeError = UndefGlobalUniv Name
+data TypeError = UndefGlobalLevel Name
                | UndefLevelParam Name
                | TypeExpected Expr
                | FunctionExpected Expr
@@ -124,7 +125,7 @@ checkLevel :: Level -> TCMethod ()
 checkLevel level = do
   tcr <- ask
   maybe (return ()) (throwE . UndefLevelParam) $ Level.getUndefParam level (view tcrLPNames tcr)
-  maybe (return ()) (throwE . UndefGlobalUniv) $ Level.getUndefGlobal level (view (tcrEnv . envGlobalNames) tcr)
+  maybe (return ()) (throwE . UndefGlobalLevel) $ Level.getUndefGlobal level (view (tcrEnv . envGlobalNames) tcr)
 
 ensureSort :: Expr -> TCMethod SortData
 ensureSort e = case e of
@@ -327,7 +328,7 @@ isDefEqCore t s = do
 
   isDefEqEta t_nn s_nn
   env <- asks _tcrEnv
-  deqTryIf (isPropProofIrrel env) $ isDefEqProofIrrel t_nn s_nn
+  deqTryIf (view envPropProofIrrel env) $ isDefEqProofIrrel t_nn s_nn
 
 
 reduceDefEq :: Expr -> Expr -> DefEqMethod (Expr, Expr)
@@ -339,11 +340,11 @@ reduceDefEq t s = do
 
 extReductionStep :: Expr -> Expr -> DefEqMethod (Expr, Expr, ReductionStatus)
 extReductionStep t s = do
-  t_mb <- lift $ normalizeExt t
-  s_mb <- lift $ normalizeExt s
+  mb_t <- lift $ normalizeExt t
+  mb_s <- lift $ normalizeExt s
 
   (t_nn, s_nn, status) <-
-    case (t_mb, s_mb) of
+    case (mb_t, mb_s) of
      (Nothing, Nothing) -> return (t, s, DefUnknown)
      (Just t_n, Nothing) -> (, s, Continue) <$> (lift . whnfCore) t_n
      (Nothing, Just s_n) -> (t, , Continue) <$> (lift . whnfCore) s_n
@@ -389,7 +390,6 @@ lazyDeltaReductionStep t s = do
 
 lazyDeltaReductionStepHelper :: Decl -> Decl -> Expr -> Expr -> DefEqMethod (Expr,Expr)
 lazyDeltaReductionStepHelper d_t d_s t s = do
-  tc <- get
   case compare (declWeight d_t) (declWeight d_s) of
     LT -> (t, ) <$> lift (unfoldNames (declWeight d_t + 1) s >>= whnfCore)
     GT -> (, s) <$> lift (unfoldNames (declWeight d_s + 1) t >>= whnfCore)
@@ -416,7 +416,7 @@ lazyDeltaReductionStepHelper d_t d_s t s = do
 isDefEqApp :: Expr -> Expr -> DefEqMethod ()
 isDefEqApp t s =
   deqTryAnd [isDefEqMain (getOperator t) (getOperator s),
-               throwE (genericLength (getAppArgs t) == genericLength (getAppArgs s)),
+               throwE (length (getAppArgs t) == length (getAppArgs s)),
                mapM_ (uncurry isDefEqMain) (zip (getAppArgs t) (getAppArgs s))]
 
 isDefEqEta :: Expr -> Expr -> DefEqMethod ()
@@ -492,112 +492,105 @@ liftMaybe = maybe mzero return
 -- | Reduce terms 'e' of the form 'elim_k A C e p[A,b] (intro_k_i A b u)'
 inductiveNormExt :: Expr -> MaybeT TCMethod Expr
 inductiveNormExt e = do
-  elimInfos <- use (envInductiveExt . indExtElimInfos)
+  elimInfos <- liftM (view $ tcrEnv . envIndExt . indExtElimInfos) $ ask
   elimOpConst <- liftMaybe . maybeConstant . getOperator $ e
-  einfo@(ExtElimInfo indName lpNames numParams numACe numIndices kTarget depElim) <-
+  einfo@(ElimInfo indName lpNames numParams numACe numIndices kTarget depElim) <-
     liftMaybe $ Map.lookup (constName elimOpConst) elimInfos
-  guard $ genericLength (getAppArgs e) >= numACe + numIndices + 1
+  guard $ length (getAppArgs e) >= numACe + numIndices + 1
   let majorIdx = numACe + numIndices
-      major = index (getAppArgs e) majorIdx in do
-    (introApp,compRule) <- findCompRule einfo elimOpConst major
-    let elimArgs = getAppArgs e
-        introArgs = getAppArgs introApp in do
-      guard $ length introArgs == numParams + (compRuleNumArgs compRule)
-      guard $ length (constLevels elimOpConst) == length lpNames
-      let rhsArgs = reverse ((take numACe elimArgs) ++
-                              (take (compRuleNumArgs compRule) $ drop numParams introArgs))
-          rhsBody = instantiateUnivParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
-          rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
-          extraArgs = drop (majorIdx + 1) elimArgs in
-       return $ mkAppSeq rhsBodyInstantiated extraArgs
-  where
-    findCompRule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
-    findCompRule einfo elimOpConst major
-      | eei_kTarget einfo = do
-        mb_result <- lift . runMaybeT $
-                     (do introApp <- to_intro_when_K einfo major
-                         map_compRules <- liftM (iext_compRules . env_ind_ext . tcr_env) ask
-                         introApp_op_const <- liftMaybe $ maybe_constant (getOperator introApp)
-                         compRule <- liftMaybe $ Map.lookup (constName introApp_op_const) map_compRules
-                         return (introApp,compRule))
-        case mb_result of
-          Nothing -> regular_compRule einfo elimOpConst major
-          Just result -> return result
-      | otherwise = regular_compRule einfo elimOpConst major
-    regular_compRule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
-    regular_compRule einfo elimOpConst major = do
-      introApp <- lift $ whnf major
-      compRule <- is_intro_for (constName elimOpConst) introApp
-      return (introApp,compRule)
-
+  let major = (getAppArgs e) !! majorIdx
+  (introApp,compRule) <- findCompRule einfo elimOpConst major
+  let elimArgs = getAppArgs e
+  let introArgs = getAppArgs introApp
+  guard $ length introArgs == numParams + (compRuleNumArgs compRule)
+  guard $ length (constLevels elimOpConst) == length lpNames
+  let rhsArgs = reverse ((take numACe elimArgs) ++ (take (compRuleNumArgs compRule) $ drop numParams introArgs))
+  let rhsBody = instantiateLevelParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
+  let rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
+  let extraArgs = drop (majorIdx + 1) elimArgs
+  return $ mkAppSeq rhsBodyInstantiated extraArgs
+    where
+      findCompRule :: ElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr, CompRule)
+      findCompRule einfo elimOpConst major
+        | elimInfoKTarget einfo = do
+            mb_result <- lift . runMaybeT $
+                         (do introApp <- toIntroWhenK einfo major
+                             compRules <- liftM (view $ tcrEnv . envIndExt . indExtCompRules) ask
+                             introAppOpConst <- liftMaybe . maybeConstant . getOperator $ introApp
+                             compRule <- liftMaybe $ Map.lookup (constName introAppOpConst) compRules
+                             return (introApp, compRule))
+            case mb_result of
+             Nothing -> regularCompRule einfo elimOpConst major
+             Just result -> return result
+        | otherwise = regularCompRule einfo elimOpConst major
+      regularCompRule :: ElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr, CompRule)
+      regularCompRule einfo elimOpConst major = do
+        introApp <- lift $ whnf major
+        compRule <- isIntroFor (constName elimOpConst) introApp
+        return (introApp, compRule)
 
 -- | Return 'True' if 'e' is an introduction rule for an eliminator named 'elim'
-is_intro_for :: Name -> Expr -> MaybeT TCMethod CompRule
-is_intro_for elim_name e = do
-  map_compRules <- liftM (iext_compRules . env_ind_ext . tcr_env) ask
-  intro_fn_const <- liftMaybe $ maybe_constant (getOperator e)
-  compRule <- liftMaybe $ Map.lookup (constName intro_fn_const) map_compRules
-  guard (cr_elim_name compRule == elim_name)
+isIntroFor :: Name -> Expr -> MaybeT TCMethod CompRule
+isIntroFor elimName e = do
+  compRules <- liftM (view $ tcrEnv . envIndExt . indExtCompRules) ask
+  introFnConst <- liftMaybe $ maybeConstant (getOperator e)
+  compRule <- liftMaybe $ Map.lookup (constName introFnConst) compRules
+  guard (compRuleElimName compRule == elimName)
   return compRule
 
 -- | For datatypes that support K-axiom, given e an element of that type, we convert (if possible)
 -- to the default constructor. For example, if (e : a = a), then this method returns (eq.refl a)
-to_intro_when_K :: ExtElimInfo -> Expr -> MaybeT TCMethod Expr
-to_intro_when_K einfo e = do
-  env <- asks tcr_env
-  assert (eei_kTarget einfo) "to_intro_when_K should only be called when kTarget holds" (return ())
-  app_type <- lift $ inferType e >>= whnf
-  app_type_I <- return $ getOperator app_type
-  app_type_I_const <- liftMaybe $ maybe_constant app_type_I
-  guard (constName app_type_I_const == eei_inductive_name einfo)
-  new_introApp <- liftMaybe $ mk_nullary_intro env app_type (eei_numParams einfo)
-  new_type <- lift $ inferType new_introApp
-  types_eq <- lift $ isDefEq app_type new_type
-  guard types_eq
-  return new_introApp
+toIntroWhenK :: ElimInfo -> Expr -> MaybeT TCMethod Expr
+toIntroWhenK einfo e = do
+  env <- asks _tcrEnv
+  appType <- lift $ inferType e >>= whnf
+  let appTypeOp = getOperator appType
+  appTypeOpConst <- liftMaybe $ maybeConstant appTypeOp
+  guard (constName appTypeOpConst == elimInfoIndName einfo)
+  newIntroApp <- liftMaybe $ mkNullaryIntro env appType (elimInfoNumParams einfo)
+  newType <- lift $ inferType newIntroApp
+  typesEq <- lift $ isDefEq appType newType
+  guard typesEq
+  return newIntroApp
 
 -- | If 'op_name' is the name of a non-empty inductive datatype, then return the
 --   name of the first introduction rule. Return 'Nothing' otherwise.
-get_first_intro :: Env -> Name -> Maybe Name
-get_first_intro env op_name = do
-  mutual_idecls <- Map.lookup op_name (iext_ind_infos $ env_ind_ext env)
-  InductiveDecl _ _ intro_rules <- find (\(InductiveDecl indName _ _) -> indName == op_name) (mid_idecls mutual_idecls)
-  IntroRule ir_name _ <- find (\_ -> True) intro_rules
-  return ir_name
+getFirstIntro :: Env -> Name -> Maybe Name
+getFirstIntro env opName = do
+  InductiveDecl _ _ _ _ [IntroRule irName _] <- Map.lookup opName $ view (envIndExt . indExtIndDecls) env
+  return irName
 
-mk_nullary_intro :: Env -> Expr -> Int -> Maybe Expr
-mk_nullary_intro env app_type numParams =
-  let (op,args) = get_app_op_args app_type in do
-    op_const <- maybe_constant op
-    intro_name <- get_first_intro env (constName op_const)
-    return $ mk_app_seq (mk_constant intro_name (constLevels op_const)) (genericTake numParams args)
+mkNullaryIntro :: Env -> Expr -> Int -> Maybe Expr
+mkNullaryIntro env appType numParams =
+  let (op, args) = getAppOpArgs appType in do
+    opConst <- maybeConstant op
+    introName <- getFirstIntro env (constName opConst)
+    return $ mkAppSeq (mkConstant introName (constLevels opConst)) (take numParams args)
 
-{-
 {- Quotient -}
 
-quotient_norm_ext :: Expr -> MaybeT TCMethod Expr
-quotient_norm_ext e = do
-  env <- asks tcr_env
-  guard (env_quot_enabled env)
-  fn <- liftMaybe $ maybe_constant (getOperator e)
-  (mk_pos,arg_pos) <- if constName fn == quot_lift then return (5,3) else
-                        if constName fn == quot_ind then return (4,3) else
-                          fail "no quot comp rule applies"
+quotientNormExt :: Expr -> MaybeT TCMethod Expr
+quotientNormExt e = do
+  env <- asks _tcrEnv
+  guard $ view envQuotEnabled env
+  op <- liftMaybe $ maybeConstant (getOperator e)
+  (mkPos, argPos) <- if constName op == quotLift then return (5,3) else
+                       if constName op == quotInd then return (4,3) else
+                         fail "no quot comp rule applies"
   args <- return $ getAppArgs e
-  guard $ genericLength args > mk_pos
-  mk <- lift $ whnf (genericIndex args mk_pos)
+  guard $ length args > mkPos
+  mk <- lift . whnf $ args !! mkPos
   case mk of
-    App mk_as_app -> do
-      mk_fn <- return $ getOperator mk
-      mk_fn_const <- liftMaybe $ maybe_constant mk_fn
-      guard $ constName mk_fn_const == quot_mk
-      let f = genericIndex args arg_pos
-          elim_arity = mk_pos + 1
-          extra_args = genericDrop elim_arity args in
-        return $ mk_app_seq (mk_app f (app_arg mk_as_app)) extra_args
+    App mkAsApp -> do
+      let mkOp = getOperator mk
+      mkOpConst <- liftMaybe $ maybeConstant mkOp
+      guard $ constName mkOpConst == quotMk
+      let f = args !! argPos
+      let elimArity = mkPos + 1
+      let extraArgs = drop elimArity args
+      return $ mkAppSeq (mkApp f (appArg mkAsApp)) extraArgs
     _ -> fail "element of type 'quot' not constructed with 'quot.mk'"
     where
-      quot_lift = mk_name ["lift","quot"]
-      quot_ind = mk_name ["ind","quot"]
-      quot_mk = mk_name ["mk","quot"]
--}
+      quotLift = mkName ["lift","quot"]
+      quotInd = mkName ["ind","quot"]
+      quotMk = mkName ["mk","quot"]

@@ -30,7 +30,7 @@ data InductiveDecl = InductiveDecl {
   } deriving (Show)
 
 data ElimInfo = ElimInfo {
-  elimInfoName :: Name, -- ^ name of the inductive datatype associated with eliminator
+  elimInfoIndName :: Name, -- ^ name of the inductive datatype associated with eliminator
   elimInfoLevelParamNames :: [Name], -- ^ level parameter names used in computational rule
   elimInfoNumParams :: Int, -- ^ number of global parameters A
   elimInfoNumACe :: Int, -- ^ sum of number of global parameters A, type formers C, and minor preimises e.
