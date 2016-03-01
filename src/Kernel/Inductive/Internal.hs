@@ -58,11 +58,11 @@ data ElimInfo = ElimInfo {
   elimInfoMinorPremises :: [LocalData] -- minor premise for each introduction rule
 } deriving (Eq,Show)
 
-data AddInductiveS =
+data AddInductiveS = AddInductiveS {
   -- TODO(dhs): much better to put these all in a different structure and populate them at once
   -- (or possibly into a few different ones if they are populated at different stages)
-  _addIndEnv :: Environment,
-  _addIndIDecl :: InductiveDecl
+  _addIndEnv :: Env,
+  _addIndIDecl :: InductiveDecl,
 
   _addIndIsDefinitelyNotZero :: Bool,
   _addIndNextId :: Integer,
@@ -82,21 +82,21 @@ makeLenses ''AddInductiveS
 
 mkAddInductiveS :: Env -> InductiveDecl -> AddInductiveS
 mkAddInductiveS env idecl = AddInductiveS {
-  addIndEnv = env,
-  addIndIDecl = idecl,
+  _addIndEnv = env,
+  _addIndIDecl = idecl,
 
-  addIndNextId = 0,
+  _addIndNextId = 0,
 
-  addIndIsDefinitelyNotZero = False,
-  addIndDepElim = False,
-  addIndElimLevel = Nothing,
+  _addIndIsDefinitelyNotZero = False,
+  _addIndDepElim = False,
+  _addIndElimLevel = Nothing,
 
-  addIndParamLocals = [],
-  addIndIndLevel = Nothing,
-  addIndIndConst = Nothing,
-  addIndNumArgs = Nothing,
-  addIndElimInfo = Nothing,
-  addIndKTarget = False
+  _addIndParamLocals = [],
+  _addIndIndLevel = Nothing,
+  _addIndIndConst = Nothing,
+  _addIndNumArgs = Nothing,
+  _addIndElimInfo = Nothing,
+  _addIndKTarget = False
   }
 
 type AddInductiveMethod = ExceptT InductiveDeclError (State AddInductiveS)
@@ -180,29 +180,31 @@ checkIntroRules = do
         checkIntroRuleCore 0 False name ty
 
       checkIntroRuleCore :: Int -> Bool -> Name -> Expr -> AddInductiveMethod ()
-      checkIntroRuleCore paramNum foundRec name ty = case ty of
-        Pi pi -> do
-          numParams <- use (addIndIDecl . indDeclNumParams)
-          paramLocals <- use addIndParamLocals
-          if paramNum < numParams
-            then do let local = paramLocals !! paramNum
-                    isDefEq (bindingDomain pi) (localType local) >>=
-                      flip indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
-                    checkIntroRuleCore (paramNum+1) foundRec name (instantiate (bindingBody pi) (Local local))
-            else do sort <- ensureType (bindingDomain pi)
-                    indLevel <- liftM Maybe.fromJust $ use addIndIndLevel
-                    env <- use addIndEnv
-                    indAssert (levelNotBiggerThan (sortLevel sort) indLevel || (isZero indLevel && envPropImpredicative env))
-                      (UniLevelOfArgTooBig paramNum name (sortLevel sort) indLevel)
-                    domainTy <- whnf (bindingDomain pi)
-                    checkPositivity domainTy name paramNum
-                    argIsRec <- isRecArg domainTy
-                    indAssert (not foundRec || argIsRec) (NonRecArgAfterRecArg paramNum name)
-                    ty <- if argIsRec
-                          then indAssert (closed (bindingBody pi)) (InvalidRecArg param_num name) >> return (bindingBody pi)
-                          else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
-                    checkIntroRuleCore (param_num+1) argIsRec name ty
+      checkIntroRuleCore paramNum foundRec name ty =
+        case ty of
+         Pi pi -> do
+           numParams <- use (addIndIDecl . indDeclNumParams)
+           paramLocals <- use addIndParamLocals
+           if paramNum < numParams
+             then do let local = paramLocals !! paramNum
+                     isDefEq (bindingDomain pi) (localType local) >>=
+                       flip indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
+                     checkIntroRuleCore (paramNum+1) foundRec name (instantiate (bindingBody pi) (Local local))
+             else do sort <- ensureType (bindingDomain pi)
+                     indLevel <- liftM Maybe.fromJust $ use addIndIndLevel
+                     env <- use addIndEnv
+                     indAssert (levelNotBiggerThan (sortLevel sort) indLevel || (isZero indLevel && envPropImpredicative env))
+                       (UniLevelOfArgTooBig paramNum name (sortLevel sort) indLevel)
+                     domainTy <- whnf (bindingDomain pi)
+                     checkPositivity domainTy name paramNum
+                     argIsRec <- isRecArg domainTy
+                     indAssert (not foundRec || argIsRec) (NonRecArgAfterRecArg paramNum name)
+                     ty <- if argIsRec
+                           then indAssert (closed (bindingBody pi)) (InvalidRecArg param_num name) >> return (bindingBody pi)
+                           else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
+                     checkIntroRuleCore (param_num+1) argIsRec name ty
          _ -> isValidIndApp ty >>= flip indAssert (InvalidReturnType name)
+
 
 
 
