@@ -24,5 +24,10 @@ module Kernel.Expr (
   , instantiate, instantiateLevelParams
   , isConstant, maybeConstant
    -- TODO(dhs): need to expose more!
+  , mkProp
     ) where
+import qualified Kernel.Level as Level
 import Kernel.Expr.Internal
+
+mkProp :: Expr
+mkProp = mkSort Level.mkZero

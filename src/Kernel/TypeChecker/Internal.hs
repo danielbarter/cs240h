@@ -17,7 +17,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 
 import Data.List (nub,find,genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
-import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~))
+import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~), (%%=))
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -31,7 +31,8 @@ import qualified Kernel.Level as Level
 import Kernel.Level (Level)
 import Kernel.Expr
 import Kernel.Env
-import Kernel.DefEqCache
+import qualified Kernel.DeqCache as DeqCache
+import Kernel.DeqCache (DeqCache, mkDeqCache)
 
 {- TCMethods -}
 
@@ -56,7 +57,7 @@ data TypeCheckerR = TypeCheckerR {
 
 data TypeCheckerS = TypeCheckerS {
   _tcsNextId :: Integer ,
-  _tcsDefEqCache :: DefEqCache,
+  _tcsDeqCache :: DeqCache,
   _tcsInferTypeCache :: Map Expr Expr
   }
 
@@ -66,7 +67,7 @@ mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
 
 mkTypeCheckerS :: Integer -> TypeCheckerS
-mkTypeCheckerS nextId = TypeCheckerS nextId mkDefEqCache Map.empty
+mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty
 
 type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
 
@@ -255,7 +256,7 @@ normalizeExt :: Expr -> TCMethod (Maybe Expr)
 normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e)
 
 gensym :: TCMethod Integer
-gensym = n %%= (n, n + 1)
+gensym = tcsNextId %%= \n -> (n, n + 1)
 
 -- is_def_eq
 
@@ -273,10 +274,10 @@ deqCommitTo deqFn = deqFn >> throwE False
 -- | 'deqTryAnd' proceeds through its arguments, and short-circuits with True if all arguments short-circuit with True, otherwise it does nothing.
 deqTryAnd :: [DefEqMethod ()] -> DefEqMethod ()
 deqTryAnd [] = throwE True
-deqTryAnd (defFn:defFns) = do
+deqTryAnd (deqFn:deqFns) = do
   success <- lift $ runExceptT deqFn
   case success of
-    Left True -> deqTryAnd defFns
+    Left True -> deqTryAnd deqFns
     _ -> return ()
 
 -- | 'deqTryOr' proceeds through its arguments, and short-circuits with True if any of its arguments short-circuit with True, otherwise it does nothing.
@@ -309,21 +310,21 @@ isDefEqMain t s = do
 isDefEqCore :: Expr -> Expr -> DefEqMethod ()
 isDefEqCore t s = do
   quickIsDefEq t s
-  tWhnf <- lift $ whnfCore t
-  sWhnf <- lift $ whnfCore s
-  deqTryIf (tWnhf /= t || sWhnf /= s) $ quickIsDefEq tWhnf sWhnf
-  (tReduce,sReduce) <- reduceDefEq tWhnf sWhnf
+  t_n <- lift $ whnfCore t
+  s_n <- lift $ whnfCore s
+  deqTryIf (t_n /= t || s_n /= s) $ quickIsDefEq t_n s_n
+  (t_nn, s_nn) <- reduceDefEq t_n s_n
 
-  case (tReduce,sReduce) of
+  case (t_nn, t_nn) of
     (Constant const1, Constant const2) | constName const1 == constName const2 &&
                                          isDefEqLevels (constLevels const1) (constLevels const2) -> throwE True
     (Local local1, Local local2) | localName local1 == localName local2 ->
       throwE True
-    (App app1,App app2) -> deqCommitTo (isDefEqApp tReduce sReduce)
+    (App app1,App app2) -> deqCommitTo (isDefEqApp t_nn s_nn)
     _ -> return ()
 
-  isDefEqEta tReduce sReduce
-  asks tcrEnv >>= (\env -> deqTryIf (isPropProofIrrel env) $ isDefEqProofIrrel tReduce sReduce)
+  isDefEqEta t_nn s_nn
+  asks tcrEnv >>= (\env -> deqTryIf (isPropProofIrrel env) $ isDefEqProofIrrel t_nn s_nn)
 
 
 reduceDefEq :: Expr -> Expr -> DefEqMethod (Expr, Expr)
@@ -335,22 +336,21 @@ reduceDefEq t s = do
 
 extReductionStep :: Expr -> Expr -> DefEqMethod (Expr, Expr, ReductionStatus)
 extReductionStep t s = do
-  tMaybe <- lift $ normalizeExt t
-  sMaybe <- lift $ normalizeExt s
+  t_mb <- lift $ normalizeExt t
+  s_mb <- lift $ normalizeExt s
 
-  (t_nn, s_nn, status) <- case (tMaybe, sMaybe) of
-    (Nothing, Nothing) -> return (t_n, s_n, DefUnknown)
-    (Just t_n, Nothing) -> do t_nn <- lift $ whnf_core t_n
-                             return (t_nn, s_n, Continue)
-    (Nothing, Just s_n) -> do s_nn <- lift $ whnf_core s_n
-                             return (t_n, s_nn, Continue)
-    (Just t_n, Just s_n) -> do t_nn <- lift $ whnf_core t_n
-                              s_nn <- lift $ whnf_core s_n
-                              return (t_nn, s_nn, Continue)
+  (t_nn, s_nn, status) <-
+    case (t_mb, s_mb) of
+     (Nothing, Nothing) -> return (t, s, DefUnknown)
+     (Just t_n, Nothing) -> (, s, Continue) <$> (lift . whnfCore) t_n
+     (Nothing, Just s_n) -> (t, , Continue) <$> (lift . whnfCore) s_n
+     (Just t_n, Just s_n) -> do t_nn <- lift $ whnfCore t_n
+                                s_nn <- lift $ whnfCore s_n
+                                return (t_nn, s_nn, Continue)
 
   case status of
-    DefUnknown -> return (t, s, DefUnknown)
-    Continue -> quickIsDefEq t s >> return (t, s, Continue)
+    DefUnknown -> return (t_nn, s_nn, DefUnknown)
+    Continue -> quickIsDefEq t_nn s_nn >> return (t_nn, s_nn, Continue)
 
 lazyDeltaReduction :: Expr -> Expr -> DefEqMethod (Expr,Expr)
 lazyDeltaReduction t s = do
@@ -363,8 +363,8 @@ data ReductionStatus = Continue | DefUnknown
 appendToPair :: (a, b) -> c -> (a, b, c)
 appendToPair (x, y) z = (x, y, z)
 
-isDelta :: Environment -> Expr -> Maybe Declaration
-isDelta env e = envLookupDecl env (constName . getOperation $ e) >>= guard isDefinition
+isDelta :: Env -> Expr -> Maybe Decl
+isDelta env e = envLookupDecl env (constName . getOperator $ e) >>= guard isDefinition
 
 -- | Perform one lazy delta-reduction step.
 lazyDeltaReductionStep :: Expr -> Expr -> DefEqMethod (Expr, Expr, ReductionStatus)
@@ -373,19 +373,19 @@ lazyDeltaReductionStep t s = do
   (t_n, s_n, status) <-
     case (isDelta env t, isDelta env s) of
       (Nothing, Nothing) -> return (t, s, DefUnknown)
-      (Just d_t, Nothing) -> (, s, Continue) <$> lift (unfoldNames 0 t >>= whnf_core)
-      (Nothing, Just d_s) -> (t, , Continue) <$> lift (unfoldNames 0 s >>= whnf_core)
-      (Just d_t, Just d_s) -> flip append_to_pair Continue <$> lazyDeltaReductionStepHelper d_t d_s t s
+      (Just d_t, Nothing) -> (, s, Continue) <$> lift (unfoldNames 0 t >>= whnfCore)
+      (Nothing, Just d_s) -> (t, , Continue) <$> lift (unfoldNames 0 s >>= whnfCore)
+      (Just d_t, Just d_s) -> flip appendToPair Continue <$> lazyDeltaReductionStepHelper d_t d_s t s
   case status of
     DefUnknown -> return (t_n, s_n, DefUnknown)
     Continue -> quickIsDefEq t_n s_n >> return (t_n,s_n,Continue)
 
-lazyDeltaReductionStepHelper :: Declaration -> Declaration -> Expr -> Expr -> DefEqMethod (Expr,Expr)
+lazyDeltaReductionStepHelper :: Decl -> Decl -> Expr -> Expr -> DefEqMethod (Expr,Expr)
 lazyDeltaReductionStepHelper d_t d_s t s = do
   tc <- get
   case compare (declWeight d_t) (declWeight d_s) of
-    LT -> (t, ) <$> lift (unfoldNames (declWeight d_t + 1) s >>= whnf_core)
-    GT -> (, s) <$> lift (unfoldNames (declWeight d_s + 1) t >>= whnf_core)
+    LT -> (t, ) <$> lift (unfoldNames (declWeight d_t + 1) s >>= whnfCore)
+    GT -> (, s) <$> lift (unfoldNames (declWeight d_s + 1) t >>= whnfCore)
     EQ ->
       case (t,s) of
         (App t_app, App s_app) -> do
@@ -397,8 +397,8 @@ lazyDeltaReductionStepHelper d_t d_s t s = do
         _ -> reduceBoth
       where
         reduceBoth = do
-          t_dn <- lift $ unfoldNames (declWeight d_s - 1) t >>= whnf_core
-          s_dn <- lift $ unfoldNames (declWeight d_t - 1) s >>= whnf_core
+          t_dn <- lift $ unfoldNames (declWeight d_s - 1) t >>= whnfCore
+          s_dn <- lift $ unfoldNames (declWeight d_t - 1) s >>= whnfCore
           return (t_dn, s_dn)
 
 {- | Throw true if 't' and 's' are definitionally equal because they are applications of the form
@@ -421,7 +421,7 @@ isDefEqEtaCore :: Expr -> Expr -> DefEqMethod ()
 isDefEqEtaCore t s = go t s where
   go (Lambda lam1) (Lambda lam2) = throwE False
   go (Lambda lam1) s = do
-    s_ty_n <- lift $ infer_type s >>= whnf
+    s_ty_n <- lift $ inferType s >>= whnf
     case s_ty_n of
       Pi pi -> let new_s = mkLambda (bindingName pi) (bindingDomain pi) (mkApp s (mkVar 0)) (bindingInfo pi) in
                 deqCommitTo (isDefEqMain t new_s)
@@ -447,13 +447,13 @@ quickIsDefEq t s = do
   case (t, s) of
     (Lambda lam1, Lambda lam2) -> deqCommitTo (isDefEqBinding lam1 lam2)
     (Pi pi1, Pi pi2) -> deqCommitTo (isDefEqBinding pi1 pi2)
-    (Sort sort1, Sort sort2) -> throwE (sort_level sort1 == sort_level sort2)
+    (Sort sort1, Sort sort2) -> throwE (sortLevel sort1 == sortLevel sort2)
     _ -> return ()
 
 -- | Given lambda/Pi expressions 't' and 's', return true iff 't' is def eq to 's', which holds iff 'domain(t)' is definitionally equal to 'domain(s)' and 'body(t)' is definitionally equal to 'body(s)'
 isDefEqBinding :: BindingData -> BindingData -> DefEqMethod ()
 isDefEqBinding bind1 bind2 = do
-  deqTryAnd  [(isDefEqMain (binding_domain bind1) (binding_domain bind2)),
+  deqTryAnd  [(isDefEqMain (bindingDomain bind1) (bindingDomain bind2)),
                 do nextId <- lift gensym
                    local <- return $ mkLocal (mkSystemNameI nextId) (bindingName bind1) (bindingDomain bind1) (bindingInfo bind1)
                    isDefEqMain (instantiate (bindingBody bind1) local) (instantiate (bindingBody bind2) local)]
@@ -462,9 +462,7 @@ isDefEqLevels :: [Level] -> [Level] -> Bool
 isDefEqLevels ls1 ls2 = ls1 == ls2
 
 deqCacheAddEquiv :: Expr -> Expr -> DefEqMethod ()
-deqCacheAddEquiv e1 e2 = do
-  eqv <- gets tcs_equiv_manager
-  modify (\tc -> tc { tcs_equiv_manager = EM.add_equiv e1 e2 eqv })
+deqCacheAddEquiv e1 e2 = tcsDeqCache %= DeqCache.addEquiv e1 e2
 
 deqCacheIsEquiv :: Expr -> Expr -> DefEqMethod ()
 deqCacheIsEquiv e1 e2 = do
@@ -478,6 +476,7 @@ deqCacheIsEquiv e1 e2 = do
 liftMaybe :: (MonadPlus m) => Maybe a -> m a
 liftMaybe = maybe mzero return
 
+{-
 -- | Reduce terms 'e' of the form 'elim_k A C e p[A,b] (intro_k_i A b u)'
 inductiveNormExt :: Expr -> MaybeT TCMethod Expr
 inductiveNormExt e = do
@@ -535,26 +534,26 @@ to_intro_when_K :: ExtElimInfo -> Expr -> MaybeT TCMethod Expr
 to_intro_when_K einfo e = do
   env <- asks tcr_env
   assert (eei_K_target einfo) "to_intro_when_K should only be called when K_target holds" (return ())
-  app_type <- lift $ infer_type e >>= whnf
+  app_type <- lift $ inferType e >>= whnf
   app_type_I <- return $ getOperator app_type
   app_type_I_const <- liftMaybe $ maybe_constant app_type_I
   guard (const_name app_type_I_const == eei_inductive_name einfo)
   new_intro_app <- liftMaybe $ mk_nullary_intro env app_type (eei_num_params einfo)
-  new_type <- lift $ infer_type new_intro_app
+  new_type <- lift $ inferType new_intro_app
   types_eq <- lift $ isDefEq app_type new_type
   guard types_eq
   return new_intro_app
 
 -- | If 'op_name' is the name of a non-empty inductive datatype, then return the
 --   name of the first introduction rule. Return 'Nothing' otherwise.
-get_first_intro :: Environment -> Name -> Maybe Name
+get_first_intro :: Env -> Name -> Maybe Name
 get_first_intro env op_name = do
   mutual_idecls <- Map.lookup op_name (iext_ind_infos $ env_ind_ext env)
   InductiveDecl _ _ intro_rules <- find (\(InductiveDecl ind_name _ _) -> ind_name == op_name) (mid_idecls mutual_idecls)
   IntroRule ir_name _ <- find (\_ -> True) intro_rules
   return ir_name
 
-mk_nullary_intro :: Environment -> Expr -> Integer -> Maybe Expr
+mk_nullary_intro :: Env -> Expr -> Integer -> Maybe Expr
 mk_nullary_intro env app_type num_params =
   let (op,args) = get_app_op_args app_type in do
     op_const <- maybe_constant op
@@ -588,3 +587,4 @@ quotient_norm_ext e = do
       quot_lift = mk_name ["lift","quot"]
       quot_ind = mk_name ["ind","quot"]
       quot_mk = mk_name ["mk","quot"]
+-}
