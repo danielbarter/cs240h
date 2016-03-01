@@ -51,12 +51,14 @@ data TypeError = UndefGlobalUniv Name
                deriving (Eq,Show)
 
 data TypeCheckerR = TypeCheckerR {
-  tcrEnv :: Env ,
-  tcrLPNames :: [Name]
+  _tcrEnv :: Env ,
+  _tcrLPNames :: [Name]
 }
 
+makeLenses ''TypeCheckerR
+
 data TypeCheckerS = TypeCheckerS {
-  _tcsNextId :: Integer ,
+  _tcsNextId :: Int,
   _tcsDeqCache :: DeqCache,
   _tcsInferTypeCache :: Map Expr Expr
   }
@@ -66,17 +68,17 @@ makeLenses ''TypeCheckerS
 mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
 
-mkTypeCheckerS :: Integer -> TypeCheckerS
+mkTypeCheckerS :: Int -> TypeCheckerS
 mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty
 
 type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
 
-tcEval :: Env -> [Name] -> Integer -> TCMethod a -> Either TypeError (a, Integer)
+tcEval :: Env -> [Name] -> Int -> TCMethod a -> Either TypeError (a, Int)
 tcEval env lpNames nextId tcFn =
   let (x, tc) = runReader (runStateT (runExceptT tcFn) (mkTypeCheckerS nextId)) (mkTypeCheckerR env lpNames) in
-  (,tcsNextId tc) <$> x
+  (, view tcsNextId tc) <$> x
 
-tcRun :: Env -> [Name] -> Integer -> TCMethod a -> Either TypeError a
+tcRun :: Env -> [Name] -> Int -> TCMethod a -> Either TypeError a
 tcRun env lpNames nextId = fmap fst . (tcEval env lpNames nextId)
 
 check :: Env -> Decl -> Either TypeError ()
@@ -102,12 +104,12 @@ checkNoLocal e = tcAssert (not $ exprHasLocal e) (DeclHasLocals e)
 
 checkName :: Name -> TCMethod()
 checkName name = do
-  env <- asks tcrEnv
-  maybe (return ()) (throwE . NameAlreadyDeclared) (envLookupDecl env name)
+  env <- asks _tcrEnv
+  maybe (return ()) (throwE . NameAlreadyDeclared) (envLookupDecl name env)
 
 checkDuplicatedParams :: TCMethod ()
 checkDuplicatedParams = do
-  lpNames <- asks tcrLPNames
+  lpNames <- asks _tcrLPNames
   tcAssert (lpNames == nub lpNames) DuplicateLevelParamName
 
 checkValMatchesType :: Expr -> Expr -> TCMethod()
@@ -121,8 +123,8 @@ checkClosed e = tcAssert (not $ hasFreeVars e) (DeclHasFreeVars e)
 checkLevel :: Level -> TCMethod ()
 checkLevel level = do
   tcr <- ask
-  maybe (return ()) (throwE . UndefLevelParam) (Level.getUndefParam level (tcrLPNames tcr))
-  maybe (return ()) (throwE . UndefGlobalUniv) (Level.getUndefGlobal level (envGlobalNames $ tcrEnv tcr))
+  maybe (return ()) (throwE . UndefLevelParam) $ Level.getUndefParam level (view tcrLPNames tcr)
+  maybe (return ()) (throwE . UndefGlobalUniv) $ Level.getUndefGlobal level (view (tcrEnv . envGlobalNames) tcr)
 
 ensureSort :: Expr -> TCMethod SortData
 ensureSort e = case e of
@@ -161,14 +163,14 @@ inferType e = do
         Lambda lambda -> inferLambda lambda
         Pi pi -> inferPi pi
         App app -> inferApp app
-      inferTypeCache %= Map.insert e ty
+      tcsInferTypeCache %= Map.insert e ty
       return ty
 
 inferConstant :: ConstantData -> TCMethod Expr
 inferConstant c = do
-  env <- asks tcrEnv
-  case envLookupDecl env (constName c) of
-    Nothing -> throwE (ConstNotFound c)
+  env <- asks _tcrEnv
+  case envLookupDecl (constName c) env of
+    Nothing -> throwE . ConstNotFound . constName $ c
     Just d -> do
       let (dLPNames, cLevels) = (declLPNames d, constLevels c)
       tcAssert (length dLPNames == length cLevels) $ ConstHasWrongNumLevels (constName c) dLPNames cLevels
@@ -216,7 +218,7 @@ whnf e = do
     Nothing -> return e1
     Just e2 -> whnf e2
 
-whnfCoreDelta :: Integer -> Expr -> TCMethod Expr
+whnfCoreDelta :: Int -> Expr -> TCMethod Expr
 whnfCoreDelta w e = do
   e1 <- whnfCore e
   e2 <- unfoldNames w e1
@@ -232,30 +234,30 @@ whnfCore e = case e of
       otherwise -> if fnWhnf == fn then return e else whnfCore (mkApp fnWhnf arg)
   _ -> return e
 
-unfoldNames :: Integer -> Expr -> TCMethod Expr
+unfoldNames :: Int -> Expr -> TCMethod Expr
 unfoldNames w e = case e of
   App app -> let (op, args) = getAppOpArgs e in
               flip mkAppSeq args <$> unfoldNameCore w op
   _ -> unfoldNameCore w e
 
-unfoldNameCore :: Integer -> Expr -> TCMethod Expr
+unfoldNameCore :: Int -> Expr -> TCMethod Expr
 unfoldNameCore w e = case e of
   Constant const -> do
-    env <- asks tcrEnv
+    env <- asks _tcrEnv
     maybe (return e)
       (\d -> case declVal d of
           Just dVal
             | declWeight d >= w && length (constLevels const) == length (declLPNames d)
               -> unfoldNameCore w (instantiateLevelParams dVal (declLPNames d) $ constLevels const)
           _ -> return e)
-      (envLookupDecl env (constName const))
+      (envLookupDecl (constName const) env)
   _ -> return e
 
 -- TODO(dhs): check for bools and support HoTT
 normalizeExt :: Expr -> TCMethod (Maybe Expr)
 normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e)
 
-gensym :: TCMethod Integer
+gensym :: TCMethod Int
 gensym = tcsNextId %%= \n -> (n, n + 1)
 
 -- is_def_eq
@@ -324,7 +326,8 @@ isDefEqCore t s = do
     _ -> return ()
 
   isDefEqEta t_nn s_nn
-  asks tcrEnv >>= (\env -> deqTryIf (isPropProofIrrel env) $ isDefEqProofIrrel t_nn s_nn)
+  env <- asks _tcrEnv
+  deqTryIf (isPropProofIrrel env) $ isDefEqProofIrrel t_nn s_nn
 
 
 reduceDefEq :: Expr -> Expr -> DefEqMethod (Expr, Expr)
@@ -364,12 +367,16 @@ appendToPair :: (a, b) -> c -> (a, b, c)
 appendToPair (x, y) z = (x, y, z)
 
 isDelta :: Env -> Expr -> Maybe Decl
-isDelta env e = envLookupDecl env (constName . getOperator $ e) >>= guard isDefinition
+isDelta env e = do
+  const <- maybeConstant . getOperator $ e
+  decl <- flip envLookupDecl env . constName $ const
+  guard . isDefinition $ decl
+  return decl
 
 -- | Perform one lazy delta-reduction step.
 lazyDeltaReductionStep :: Expr -> Expr -> DefEqMethod (Expr, Expr, ReductionStatus)
 lazyDeltaReductionStep t s = do
-  env <- asks tcrEnv
+  env <- asks _tcrEnv
   (t_n, s_n, status) <-
     case (isDelta env t, isDelta env s) of
       (Nothing, Nothing) -> return (t, s, DefUnknown)
@@ -476,6 +483,11 @@ deqCacheIsEquiv e1 e2 = do
 liftMaybe :: (MonadPlus m) => Maybe a -> m a
 liftMaybe = maybe mzero return
 
+inductiveNormExt :: Expr -> MaybeT TCMethod Expr
+inductiveNormExt e = undefined
+
+quotientNormExt :: Expr -> MaybeT TCMethod Expr
+quotientNormExt e = undefined
 {-
 -- | Reduce terms 'e' of the form 'elim_k A C e p[A,b] (intro_k_i A b u)'
 inductiveNormExt :: Expr -> MaybeT TCMethod Expr
@@ -553,7 +565,7 @@ get_first_intro env op_name = do
   IntroRule ir_name _ <- find (\_ -> True) intro_rules
   return ir_name
 
-mk_nullary_intro :: Env -> Expr -> Integer -> Maybe Expr
+mk_nullary_intro :: Env -> Expr -> Int -> Maybe Expr
 mk_nullary_intro env app_type num_params =
   let (op,args) = get_app_op_args app_type in do
     op_const <- maybe_constant op

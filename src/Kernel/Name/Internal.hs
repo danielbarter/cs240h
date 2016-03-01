@@ -9,12 +9,12 @@ Implementation of hierarchical names
 -}
 module Kernel.Name.Internal where
 
-data Name = NoName | RConsString Name String | RConsInteger Name Integer deriving (Eq,Ord)
+data Name = NoName | RConsString Name String | RConsInt Name Int deriving (Eq,Ord)
 
 showName :: Name -> String
 showName NoName = ""
 showName (RConsString n s) = showName n ++ "." ++ s
-showName (RConsInteger n i) = showName n ++ "." ++ show(i)
+showName (RConsInt n i) = showName n ++ "." ++ show(i)
 
 instance Show Name where show n = showName n
 
@@ -23,12 +23,20 @@ mkName ns = mkNameCore (reverse ns) where
   mkNameCore [] = NoName
   mkNameCore (n:ns) = RConsString (mkNameCore ns) n
 
+systemPrefix :: Name
 systemPrefix = mkName ["#_system"]
 
-mkSystemNameI i = RConsInteger systemPrefix i
+mkSystemNameI :: Int -> Name
+mkSystemNameI i = RConsInt systemPrefix i
+
+mkSystemNameS :: String -> Name
 mkSystemNameS s = RConsString systemPrefix s
 
+noName :: Name
 noName = NoName
 
-nameRConsI = RConsString
-nameRConsS = RConsInteger
+nameRConsS :: Name -> String -> Name
+nameRConsS = RConsString
+
+nameRConsI :: Name -> Int -> Name
+nameRConsI = RConsInt
