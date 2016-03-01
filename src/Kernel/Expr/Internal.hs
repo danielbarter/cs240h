@@ -10,9 +10,7 @@ Implementation for expressions
 module Kernel.Expr.Internal where
 
 import Kernel.Name
-
-import qualified Kernel.Level as Level
-import Kernel.Level (Level)
+import Kernel.Level
 
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
@@ -86,8 +84,8 @@ exprHasLevelParam :: Expr -> Bool
 exprHasLevelParam e = case e of
   Var var -> False
   Local local -> cacheHasLevelParam $ localCache local
-  Constant const -> any (==True) (map Level.hasParam (constLevels const))
-  Sort sort -> Level.hasParam (sortLevel sort)
+  Constant const -> any (==True) (map levelHasParam (constLevels const))
+  Sort sort -> levelHasParam (sortLevel sort)
   Lambda lam -> cacheHasLevelParam $ bindingCache lam
   Pi pi -> cacheHasLevelParam $ bindingCache pi
   App app -> cacheHasLevelParam $ appCache app
@@ -263,10 +261,10 @@ instantiateLevelParams e levelParamNames levels =
       | not (exprHasLevelParam e) = Just e
 
     instantiateLevelParamsFn levelParamNames levels (Constant const) _ =
-      Just $ updateConstant const (map (Level.instantiate levelParamNames levels) (constLevels const))
+      Just $ updateConstant const (map (instantiateLevel levelParamNames levels) (constLevels const))
 
     instantiateLevelParamsFn levelParamNames levels (Sort sort) _ =
-      Just $ updateSort sort (Level.instantiate levelParamNames levels (sortLevel sort))
+      Just $ updateSort sort (instantiateLevel levelParamNames levels (sortLevel sort))
 
     instantiateLevelParamsFn _ _ _ _ = Nothing
 
@@ -301,7 +299,7 @@ abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
 -- Misc
 
 mkProp :: Expr
-mkProp = mkSort Level.mkZero
+mkProp = mkSort mkZero
 
 innerBodyOfLambda :: Expr -> Expr
 innerBodyOfLambda e = case e of

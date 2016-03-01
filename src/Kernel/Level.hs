@@ -9,10 +9,11 @@ API for universe levels
 -}
 module Kernel.Level (
   Level
-  , mkZero, mkSucc, mkMax, mkIMax, mkParam, mkGlobal
-  , hasParam
-  , instantiate
+  , mkZero, mkSucc, mkMax, mkIMax, mkLevelParam, mkGlobalLevel
+  , isZero, isDefinitelyNotZero
+  , levelHasParam
+  , instantiateLevel
   , getUndefParam, getUndefGlobal
-  , notBiggerThan
+  , levelNotBiggerThan
   ) where
 import Kernel.Level.Internal

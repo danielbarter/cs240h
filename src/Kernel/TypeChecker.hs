@@ -8,10 +8,15 @@ Maintainer  : daniel.selsam@gmail.com
 API for type checker
 -}
 module Kernel.TypeChecker (
-  IndDecl(IndDecl), Env
+  IndDecl(IndDecl), indDeclNumParams, indDeclLPNames, indDeclName, indDeclType, indDeclIntroRules
+  , IntroRule(IntroRule)
+  , Env
   , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
-  , envLookupDecl, envAddDecl
+  , envLookupDecl
+  , envAddAxiom, envAddDefinition
+  , envPropProofIrrel, envPropImpredicative
   , TypeError, TCMethod
+  , ensureSort, ensureType
   , tcEval, tcRun
   , check, whnf, isDefEq
   ) where

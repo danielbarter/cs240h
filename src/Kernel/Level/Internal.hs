@@ -74,23 +74,23 @@ mkIMax lhs rhs
   | lhs == rhs = lhs
   | otherwise = IMax lhs rhs
 
-mkParam :: Name -> Level
-mkParam = LevelParam
+mkLevelParam :: Name -> Level
+mkLevelParam = LevelParam
 
-mkGlobal :: Name -> Level
-mkGlobal = GlobalLevel
+mkGlobalLevel :: Name -> Level
+mkGlobalLevel = GlobalLevel
 
 {- Getters / checkers -}
 
 maxArgsToLevels :: Map Level Int -> [Level]
 maxArgsToLevels m = map (uncurry mkIteratedSucc) $ Map.toList m
 
-hasParam :: Level -> Bool
-hasParam l = case l of
+levelHasParam :: Level -> Bool
+levelHasParam l = case l of
   LevelParam _ -> True
-  Succ pred -> hasParam pred
-  Max args -> any hasParam $ Map.keys args
-  IMax lhs rhs -> hasParam lhs || hasParam rhs
+  Succ pred -> levelHasParam pred
+  Max args -> any levelHasParam $ Map.keys args
+  IMax lhs rhs -> levelHasParam lhs || levelHasParam rhs
   _ -> False
 
 getUndefParam :: Level -> [Name] -> Maybe Name
@@ -162,24 +162,24 @@ replaceInLevel f l =
         GlobalLevel _ -> l
 
 
-instantiate :: [Name] -> [Level] -> Level -> Level
-instantiate levelParamNames levels level =
-  replaceInLevel (instantiateLevel_fn levelParamNames levels) level
+instantiateLevel :: [Name] -> [Level] -> Level -> Level
+instantiateLevel levelParamNames levels level =
+  replaceInLevel (instantiateLevelFn levelParamNames levels) level
   where
-    instantiateLevel_fn :: [Name] -> [Level] -> LevelReplaceFn
-    instantiateLevel_fn levelParamNames levels level
+    instantiateLevelFn :: [Name] -> [Level] -> LevelReplaceFn
+    instantiateLevelFn levelParamNames levels level
       | not (length levelParamNames == length levels) = error "Wrong number of level params"
-      | not (hasParam level) = Just level
+      | not (levelHasParam level) = Just level
 
-    instantiateLevel_fn levelParamNames levels (LevelParam name) =
+    instantiateLevelFn levelParamNames levels (LevelParam name) =
       case List.elemIndex name levelParamNames of
         Nothing -> Nothing
         Just idx -> Just (levels!!idx)
 
-    instantiateLevel_fn _ _ _ = Nothing
+    instantiateLevelFn _ _ _ = Nothing
 
-notBiggerThan :: Level -> Level -> Bool
-notBiggerThan l1 l2 = go l1 l2 where
+levelNotBiggerThan :: Level -> Level -> Bool
+levelNotBiggerThan l1 l2 = go l1 l2 where
   go l1 l2
     | isZero l1 = True
     | l1 == l2 = True

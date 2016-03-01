@@ -22,6 +22,7 @@ module Kernel.Expr (
   , exprHasLocal, exprHasLevelParam, hasFreeVars, closed
   , abstractPi, abstractPiSeq, abstractLambda, abstractLambdaSeq
   , instantiate, instantiateSeq, instantiateLevelParams
+  , findInExpr
   , isConstant, maybeConstant
   , innerBodyOfLambda
    -- TODO(dhs): need to expose more!

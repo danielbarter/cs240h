@@ -112,7 +112,7 @@ mkDefinition env name levelParamNames ty val =
   Decl name levelParamNames ty (Just val) (1 + getMaxDeclWeight env val)
 
 mkAxiom :: Name -> [Name] -> Expr -> Decl
-mkAxiom name levelParamNames ty = Decl name levelParamNames ty Nothing 0
+mkAxiom name lpNames ty = Decl name lpNames ty Nothing 0
 
 isDefinition :: Decl -> Bool
 isDefinition decl = Maybe.isJust $ declVal decl
@@ -131,9 +131,6 @@ getMaxDeclWeight env e = case e of
 envLookupDecl :: Name -> Env -> Maybe Decl
 envLookupDecl name  = Map.lookup name . view envDecls
 
-envAddDecl :: Decl -> Env -> Env
-envAddDecl decl env = case envLookupDecl (declName decl) env of
-                       Nothing -> over envDecls (Map.insert (declName decl) decl) env
 
 envHasGlobalLevel :: Name -> Env -> Bool
 envHasGlobalLevel name = Set.member name . view envGlobalNames
@@ -715,3 +712,18 @@ quotientNormExt e = do
       quotLift = mkName ["lift","quot"]
       quotInd = mkName ["ind","quot"]
       quotMk = mkName ["mk","quot"]
+
+{- Adding to the environment -}
+
+envAddDecl :: Decl -> Env -> Either TypeError Env
+envAddDecl decl env =
+  case check env decl of
+    Left err -> Left err
+    Right () -> case envLookupDecl (declName decl) env of
+                 Nothing -> Right $ over envDecls (Map.insert (declName decl) decl) env
+
+envAddAxiom :: Name -> [Name] -> Expr -> Env -> Either TypeError Env
+envAddAxiom name lpNames ty = envAddDecl (mkAxiom name lpNames ty)
+
+envAddDefinition :: Name -> [Name] -> Expr -> Expr -> Env -> Either TypeError Env
+envAddDefinition name lpNames ty val env = envAddDecl (mkDefinition env name lpNames ty val) env

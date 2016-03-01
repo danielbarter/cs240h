@@ -22,10 +22,17 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 
 import Kernel.Name
-import qualified Kernel.Level as Level
-import Kernel.Level (Level)
+import Kernel.Level
 import Kernel.Expr
-import Kernel.TypeChecker (IndDecl(IndDecl), Env, TypeError, TCMethod, envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule, envLookupDecl, envAddDecl)
+import Kernel.TypeChecker (IndDecl(IndDecl)
+                           , indDeclNumParams, indDeclLPNames, indDeclName, indDeclType, indDeclIntroRules
+                           , IntroRule(IntroRule)
+                           , Env
+                           , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule, envLookupDecl
+                           , envPropProofIrrel, envPropImpredicative
+                           , envAddAxiom
+                           , TypeError, TCMethod)
+
 import qualified Kernel.TypeChecker as TC
 
 import qualified Data.Map as Map
@@ -113,8 +120,8 @@ mkLocalFor bind = do
   nextId <- gensym
   return $ mkLocalData (mkSystemNameI nextId) (bindingName bind) (bindingDomain bind) (bindingInfo bind)
 
-indAssert :: Bool -> IndDeclError -> AddInductiveMethod ()
-indAssert b err = if b then return () else throwE err
+indAssert :: IndDeclError -> Bool -> AddInductiveMethod ()
+indAssert err b = if b then return () else throwE err
 
 -- TODO(dhs): why did old version add another layer to this?
 mkFreshName :: AddInductiveMethod Name
@@ -141,11 +148,11 @@ checkIndType = do
   (IndDecl numParams lpNames name ty introRules) <- asks _addIndIDecl
   checkType ty lpNames
   let (rest, paramLocals) = telescopePiN numParams ty
-  indAssert (length paramLocals == numParams) $ NumParamsMismatchInIndDecl (length locals) numParams
+  indAssert (length paramLocals == numParams) $ NumParamsMismatchInIndDecl (length paramLocals) numParams
   let (body, indexLocals) = telescopePi rest
   sort <- ensureSort body
   lpNames <- map mkLevelParam . indDeclLPNames <$> asks addIndIDecl
-  addIndIsDefinitelyNotZero .= Level.isDefinitelyNotZero (sortLevel sort)
+  addIndIsDefinitelyNotZero .= isDefinitelyNotZero (sortLevel sort)
   addIndIndConst .= Just (ConstantData name lpNames)
   addIndIndLevel .= Just (sortLevel sort)
   addIndNumArgs .= Just (length indexLocals)
@@ -171,10 +178,10 @@ declareIndType = do
 checkIntroRules :: AddInductiveMethod ()
 checkIntroRules = do
   (IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
-  mapM_ checkIntroRule introRules
+  mapM_ (checkIntroRule lpNames) introRules
     where
-      checkIntroRule :: IntroRule -> AddInductiveMethod ()
-      checkIntroRule (IntroRule name ty) = do
+      checkIntroRule :: [Name] -> IntroRule -> AddInductiveMethod ()
+      checkIntroRule lpNames (IntroRule name ty) = do
         checkType ty lpNames
         checkIntroRuleCore 0 False name ty
 
@@ -183,11 +190,11 @@ checkIntroRules = do
         case ty of
          Pi pi -> do
            numParams <- use (addIndIDecl . indDeclNumParams)
-           paramLocals <- use addIndParamLocals
+           paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
            if paramNum < numParams
              then do let local = paramLocals !! paramNum
                      isDefEq (bindingDomain pi) (localType local) >>=
-                       flip indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
+                       indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
                      checkIntroRuleCore (paramNum+1) foundRec name (instantiate (bindingBody pi) (Local local))
              else do sort <- ensureType (bindingDomain pi)
                      indLevel <- liftM Maybe.fromJust $ use addIndIndLevel
@@ -202,70 +209,44 @@ checkIntroRules = do
                            then indAssert (closed (bindingBody pi)) (InvalidRecArg paramNum name) >> return (bindingBody pi)
                            else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
                      checkIntroRuleCore (paramNum+1) argIsRec name ty
-         _ -> isValidIndApp ty >>= flip indAssert (InvalidReturnType name)
+         _ -> isValidIndApp ty >>= indAssert (InvalidReturnType name)
 
+
+      checkPositivity :: Expr -> Name -> Int -> AddInductiveMethod ()
+      checkPositivity ty name paramNum = do
+        ty <- whnf ty
+        itOccurs <- indTypeOccurs ty
+        if not itOccurs then return () else
+          case ty of
+           Pi pi -> do indTypeOccurs (bindingDomain pi) >>= flip indAssert (NonPosOccurrence paramNum name) . not
+                       local <- mkLocalFor pi
+                       checkPositivity (instantiate (bindingBody pi) $ Local local) name paramNum
+           _ -> isValidIndApp ty >>= flip indAssert (NonValidOccurrence paramNum name)
+
+      indTypeOccurs :: Expr -> AddInductiveMethod Bool
+      indTypeOccurs e = do
+        indTypeConst <- liftM Maybe.fromJust $ use addIndIndConst
+        return . Maybe.isJust $ findInExpr (\e _ -> case e of
+                                             Constant const -> constName const == constName indTypeConst
+                                             _ -> False) e
+
+      isValidIndApp :: Expr -> AddInductiveMethod Bool
+      isValidIndApp e = do
+        indTypeConst <- liftM Maybe.fromJust $ use addIndIndConst
+        paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
+        numArgs <- use addIndNumArgs
+        let (op, args) = getAppOpArgs e
+        opEq <- isDefEq op (Constant indTypeConst)
+        return $ opEq && length args == numArgs && all (uncurry (==)) (zip args (map Local paramLocals))
+
+      isRecArg :: Expr -> AddInductiveMethod Bool
+      isRecArg e = do
+        e <- whnf e
+        case e of
+         Pi pi -> mkLocalFor pi >>= isRecArg . (instantiate (bindingBody pi)) . Local
+         _ -> isValidIndApp e
 
 {-
-
-
-
-
--- Check if ty contains only positive occurrences of the inductive datatypes being declared.
-check_positivity ty name paramNum = do
-  ty <- whnf ty
-  it_occ <- has_it_occ ty
-  if not it_occ then return () else
-    case ty of
-      Pi pi -> do it_occ <- has_it_occ (bindingDomain pi)
-                  ind_assert (not it_occ) (NonPosOccurrence paramNum name)
-                  local <- mk_local_for pi
-                  check_positivity (instantiate (bindingBody pi) $ Local local) name paramNum
-      _ -> is_valid_it_app ty >>= flip ind_assert (NonValidOccurrence paramNum name)
-
--- Return true if ty does not contain any occurrence of a datatype being declared.
-has_it_occ ty = do
-  it_consts <- gets m_it_consts
-  return . Maybe.isJust $ find_in_expr (\e _ -> case e of
-                            Constant const -> const_name const `elem` (map const_name it_consts)
-                            _ -> False) ty
-
-{- Return some(d_idx) iff \c t is a recursive argument, \c d_idx is the index of the recursive inductive datatype.
-   Return none otherwise. -}
-is_rec_argument ty = do
-  ty <- whnf ty
-  case ty of
-    Pi pi -> mk_local_for pi >>= is_rec_argument . (instantiate (bindingBody pi)) . Local
-    _ -> is_valid_it_app ty
-
-is_valid_it_app_idx :: Expression -> Integer -> AddInductiveMethod Bool
-is_valid_it_app_idx ty d_idx = do
-  it_const <- liftM (flip genericIndex d_idx . m_it_consts) get
-  num_args <- liftM (flip genericIndex d_idx . m_it_num_args) get
-  (fn,args) <- return $ (get_operator ty,get_app_args ty)
-  is_eq <- is_def_eq fn (Constant it_const)
-  param_consts <- gets m_param_consts
-  return $ is_eq && genericLength args == num_args && all (uncurry (==)) (zip args (map Local param_consts))
-
-is_valid_it_app :: Expression -> AddInductiveMethod Bool
-is_valid_it_app ty = do
-  valid_it_app <- runExceptT (is_valid_it_app_core ty)
-  case valid_it_app of
-    Left d_idx -> return True
-    Right () -> return False
-
-get_valid_it_app_idx ty = do
-  valid_it_app <- runExceptT (is_valid_it_app_core ty)
-  case valid_it_app of
-    Left d_idx -> return $ Just d_idx
-    Right () -> return $ Nothing
-
-is_valid_it_app_core :: Expression -> ExceptT Integer AddInductiveMethod ()
-is_valid_it_app_core ty = do
-  it_consts <- gets m_it_consts
-  mapM_ (\d_idx -> do is_valid <- lift $ is_valid_it_app_idx ty d_idx
-                      if is_valid then throwE d_idx else return ())
-    [0..(genericLength it_consts - 1)]
-
 -- Add all introduction rules (aka constructors) to environment.
 declareIntroRules =
   gets m_idecls >>=
