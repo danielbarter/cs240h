@@ -22,12 +22,14 @@ import Data.Map (Map)
 data IntroRule = IntroRule Name Expr deriving (Show)
 
 data InductiveDecl = InductiveDecl {
-  indDeclLevelParamNames :: [Name],
-  indDeclNumParams :: Integer,
-  indDeclName :: Name,
-  indDeclType :: Expr,
-  indDeclIntroRules :: [IntroRule]
+  _indDeclNumParams :: Integer,
+  _indDeclLPNames :: [Name],
+  _indDeclName :: Name,
+  _indDeclType :: Expr,
+  _indDeclIntroRules :: [IntroRule]
   } deriving (Show)
+
+makeLenses ''InductiveDecl
 
 data ElimInfo = ElimInfo {
   elimInfoIndName :: Name, -- ^ name of the inductive datatype associated with eliminator
@@ -38,7 +40,7 @@ data ElimInfo = ElimInfo {
   -- | We support K-like reduction when the inductive datatype is in Type.{0} (aka Prop), proof irrelevance is enabled,
   -- it has only one introduction rule, the introduction rule has "0 arguments".
   elimInfoKTarget :: Bool,
-  elimInfoDepElim :: Bool -- ^ eei_dep_elim == true if dependent elimination is used for this eliminator
+  elimInfoDepElim :: Bool -- ^ elimInfoDepElim == true if dependent elimination is used for this eliminator
   } deriving (Show)
 
 -- | Represents a single computation rule
