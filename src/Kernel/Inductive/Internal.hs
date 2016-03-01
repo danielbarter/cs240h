@@ -58,16 +58,11 @@ data ElimInfo = ElimInfo {
   elimInfoMinorPremises :: [LocalData] -- minor premise for each introduction rule
 } deriving (Eq,Show)
 
-data AddInductiveR = AddInductiveR {
-  _addIndEnv :: Environment,
-  _addIndIDecl :: InductiveDecl
-  }
-
-makeLenses ''AddInductiveR
-
 data AddInductiveS =
   -- TODO(dhs): much better to put these all in a different structure and populate them at once
   -- (or possibly into a few different ones if they are populated at different stages)
+  _addIndEnv :: Environment,
+  _addIndIDecl :: InductiveDecl
 
   _addIndIsDefinitelyNotZero :: Bool,
   _addIndNextId :: Integer,
@@ -85,11 +80,11 @@ data AddInductiveS =
 
 makeLenses ''AddInductiveS
 
-mkAddInductiveR :: Env -> InductiveDecl -> AddInductiveR
-mkAddInductiveR env idecl = AddInductiveR env idecl
+mkAddInductiveS :: Env -> InductiveDecl -> AddInductiveS
+mkAddInductiveS env idecl = AddInductiveS {
+  addIndEnv = env,
+  addIndIDecl = idecl,
 
-mkAddInductiveS :: AddInductiveS
-mkAddInductiveS = AddInductiveS {
   addIndNextId = 0,
 
   addIndIsDefinitelyNotZero = False,
@@ -104,7 +99,7 @@ mkAddInductiveS = AddInductiveS {
   addIndKTarget = False
   }
 
-type AddInductiveMethod = ExceptT InductiveDeclError (StateT AddInductiveS (Reader AddInductiveR))
+type AddInductiveMethod = ExceptT InductiveDeclError (State AddInductiveS)
 
 {- Misc -}
 -- TODO(dhs): put these at the bottom
@@ -175,50 +170,44 @@ declareIndType = do
    Note: this method must be executed after declareIndType
 -}
 checkIntroRules :: AddInductiveMethod ()
-checkIntroRules = gets m_idecls >>= checkIntroRules_core 0
+checkIntroRules = do
+  (InductiveDecl numParams lpNames name ty introRules) <- use addIndIDecl
+  mapM_ checkIntroRule introRules
+    where
+      checkIntroRule :: IntroRule -> AddInductiveMethod ()
+      checkIntroRule (IntroRule name ty) = do
+        checkType ty lpNames
+        checkIntroRuleCore 0 False name ty
 
-checkIntroRules_core :: Integer -> [InductiveDecl] -> AddInductiveMethod ()
-checkIntroRules_core i idecls =
-  case idecls of
-    [] -> return ()
-    (InductiveDecl _ _ intro_rules):ds -> mapM_ (check_intro_rule i) intro_rules >> checkIntroRules_core (i+1) ds
+      checkIntroRuleCore :: Int -> Bool -> Name -> Expr -> AddInductiveMethod ()
+      checkIntroRuleCore paramNum foundRec name ty = case ty of
+        Pi pi -> do
+          numParams <- use (addIndIDecl . indDeclNumParams)
+          paramLocals <- use addIndParamLocals
+          if paramNum < numParams
+            then do let local = paramLocals !! paramNum
+                    isDefEq (bindingDomain pi) (localType local) >>=
+                      flip indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
+                    checkIntroRuleCore (paramNum+1) foundRec name (instantiate (bindingBody pi) (Local local))
+            else do sort <- ensureType (bindingDomain pi)
+                    indLevel <- liftM Maybe.fromJust $ use addIndIndLevel
+                    env <- use addIndEnv
+                    indAssert (levelNotBiggerThan (sortLevel sort) indLevel || (isZero indLevel && envPropImpredicative env))
+                      (UniLevelOfArgTooBig paramNum name (sortLevel sort) indLevel)
+                    domainTy <- whnf (bindingDomain pi)
+                    checkPositivity domainTy name paramNum
+                    argIsRec <- isRecArg domainTy
+                    indAssert (not foundRec || argIsRec) (NonRecArgAfterRecArg paramNum name)
+                    ty <- if argIsRec
+                          then indAssert (closed (bindingBody pi)) (InvalidRecArg param_num name) >> return (bindingBody pi)
+                          else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
+                    checkIntroRuleCore (param_num+1) argIsRec name ty
+         _ -> isValidIndApp ty >>= flip indAssert (InvalidReturnType name)
 
-{-
-  Check the intro_rule ir of the given inductive decl. d_idx is the position of d in m_idecls.
-  See checkIntroRules.
--}
-check_intro_rule :: Integer -> IntroRule -> AddInductiveMethod ()
-check_intro_rule d_idx (IntroRule name ty) = do
-  level_names <- gets m_level_names
-  check_type ty level_names
-  check_intro_rule_core d_idx 0 False name ty
 
-check_intro_rule_core d_idx param_num found_rec name ty =
-  case ty of
-    Pi pi -> do num_params <- gets m_num_params
-                param_consts <- gets m_param_consts
-                if param_num < num_params
-                  then do local <- return $ genericIndex param_consts param_num
-                          is_eq <- is_def_eq (bindingDomain pi) (local_type local)
-                          ind_assert is_eq (ArgDoesNotMatchInductiveParameters param_num name)
-                          check_intro_rule_core d_idx (param_num+1) found_rec name (instantiate (bindingBody pi) (Local local))
-                  else do sort <- ensure_type (bindingDomain pi)
-                          {- the sort is ok IF
-                             1. its level is <= inductive datatype level, OR
-                             2. m_env is impredicative and inductive datatype is at level 0 -}
-                          it_level <- liftM (flip genericIndex d_idx . m_it_levels) get
-                          env <- gets m_env
-                          ind_assert (level_leq (sort_level sort) it_level || (is_zero it_level && is_impredicative env))
-                            (UniLevelOfArgTooBig param_num name (sort_level sort) (it_level))
-                          domain_ty <- whnf (bindingDomain pi)
-                          check_positivity domain_ty name param_num
-                          is_rec <- is_rec_argument domain_ty
-                          ind_assert (not found_rec || is_rec) (NonRecArgAfterRecArg param_num name)
-                          ty <- if is_rec
-                                then ind_assert (closed (bindingBody pi)) (InvalidRecArg param_num name) >> return (bindingBody pi)
-                                else mk_local_for pi >>= return . instantiate (bindingBody pi) . Local
-                          check_intro_rule_core d_idx (param_num+1) is_rec name ty
-    _ -> is_valid_it_app_idx ty d_idx >>= flip ind_assert (InvalidReturnType name)
+
+
+
 
 -- Check if ty contains only positive occurrences of the inductive datatypes being declared.
 check_positivity ty name param_num = do
