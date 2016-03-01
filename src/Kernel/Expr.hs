@@ -23,11 +23,8 @@ module Kernel.Expr (
   , abstractPi, abstractPiSeq, abstractLambda, abstractLambdaSeq
   , instantiate, instantiateLevelParams
   , isConstant, maybeConstant
+  , innerBodyOfLambda
    -- TODO(dhs): need to expose more!
   , mkProp
-    ) where
-import qualified Kernel.Level as Level
+  ) where
 import Kernel.Expr.Internal
-
-mkProp :: Expr
-mkProp = mkSort Level.mkZero

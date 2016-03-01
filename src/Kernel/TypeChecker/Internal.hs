@@ -483,95 +483,96 @@ deqCacheIsEquiv e1 e2 = do
 liftMaybe :: (MonadPlus m) => Maybe a -> m a
 liftMaybe = maybe mzero return
 
-inductiveNormExt :: Expr -> MaybeT TCMethod Expr
-inductiveNormExt e = undefined
+--inductiveNormExt :: Expr -> MaybeT TCMethod Expr
+--inductiveNormExt e = undefined
 
-quotientNormExt :: Expr -> MaybeT TCMethod Expr
-quotientNormExt e = undefined
-{-
+--quotientNormExt :: Expr -> MaybeT TCMethod Expr
+--quotientNormExt e = undefined
+
 -- | Reduce terms 'e' of the form 'elim_k A C e p[A,b] (intro_k_i A b u)'
 inductiveNormExt :: Expr -> MaybeT TCMethod Expr
 inductiveNormExt e = do
   elimInfos <- use (envInductiveExt . indExtElimInfos)
   elimOpConst <- liftMaybe . maybeConstant . getOperator $ e
-  einfo@(ExtElimInfo ind_name lp_names num_params num_ACe num_indices k_target dep_elim) <-
-    liftMaybe $ Map.lookup (const_name elim_fn_const) elim_infos
-  guard $ genericLength (get_app_args e) >= num_ACe + num_indices + 1
-  let major_idx = num_ACe + num_indices
-      major = genericIndex (get_app_args e) major_idx in do
-    (intro_app,comp_rule) <- find_comp_rule einfo elim_fn_const major
-    let elim_args = get_app_args e
-        intro_args = get_app_args intro_app in do
-      guard $ genericLength intro_args == num_params + (cr_num_rec_nonrec_args comp_rule)
-      guard $ genericLength (const_levels elim_fn_const) == genericLength lp_names
-      let rhs_args = reverse ((genericTake num_ACe elim_args) ++
-                              (genericTake (cr_num_rec_nonrec_args comp_rule) $ genericDrop num_params intro_args))
-          rhs_body = instantiate_univ_params (body_of_lambda $ cr_comp_rhs comp_rule) lp_names (const_levels elim_fn_const)
-          rhs_body_instantiated = instantiate_seq rhs_body rhs_args
-          extra_args = genericDrop (major_idx + 1) elim_args in do
-        return $ mk_app_seq rhs_body_instantiated extra_args
+  einfo@(ExtElimInfo indName lpNames numParams numACe numIndices kTarget depElim) <-
+    liftMaybe $ Map.lookup (constName elimOpConst) elimInfos
+  guard $ genericLength (getAppArgs e) >= numACe + numIndices + 1
+  let majorIdx = numACe + numIndices
+      major = index (getAppArgs e) majorIdx in do
+    (introApp,compRule) <- findCompRule einfo elimOpConst major
+    let elimArgs = getAppArgs e
+        introArgs = getAppArgs introApp in do
+      guard $ length introArgs == numParams + (compRuleNumArgs compRule)
+      guard $ length (constLevels elimOpConst) == length lpNames
+      let rhsArgs = reverse ((take numACe elimArgs) ++
+                              (take (compRuleNumArgs compRule) $ drop numParams introArgs))
+          rhsBody = instantiateUnivParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
+          rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
+          extraArgs = drop (majorIdx + 1) elimArgs in
+       return $ mkAppSeq rhsBodyInstantiated extraArgs
   where
-    find_comp_rule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
-    find_comp_rule einfo elim_fn_const major
-      | eei_K_target einfo = do
+    findCompRule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
+    findCompRule einfo elimOpConst major
+      | eei_kTarget einfo = do
         mb_result <- lift . runMaybeT $
-                     (do intro_app <- to_intro_when_K einfo major
-                         map_comp_rules <- liftM (iext_comp_rules . env_ind_ext . tcr_env) ask
-                         intro_app_op_const <- liftMaybe $ maybe_constant (getOperator intro_app)
-                         comp_rule <- liftMaybe $ Map.lookup (const_name intro_app_op_const) map_comp_rules
-                         return (intro_app,comp_rule))
+                     (do introApp <- to_intro_when_K einfo major
+                         map_compRules <- liftM (iext_compRules . env_ind_ext . tcr_env) ask
+                         introApp_op_const <- liftMaybe $ maybe_constant (getOperator introApp)
+                         compRule <- liftMaybe $ Map.lookup (constName introApp_op_const) map_compRules
+                         return (introApp,compRule))
         case mb_result of
-          Nothing -> regular_comp_rule einfo elim_fn_const major
+          Nothing -> regular_compRule einfo elimOpConst major
           Just result -> return result
-      | otherwise = regular_comp_rule einfo elim_fn_const major
-    regular_comp_rule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
-    regular_comp_rule einfo elim_fn_const major = do
-      intro_app <- lift $ whnf major
-      comp_rule <- is_intro_for (const_name elim_fn_const) intro_app
-      return (intro_app,comp_rule)
+      | otherwise = regular_compRule einfo elimOpConst major
+    regular_compRule :: ExtElimInfo -> ConstantData -> Expr -> MaybeT TCMethod (Expr,CompRule)
+    regular_compRule einfo elimOpConst major = do
+      introApp <- lift $ whnf major
+      compRule <- is_intro_for (constName elimOpConst) introApp
+      return (introApp,compRule)
 
 
 -- | Return 'True' if 'e' is an introduction rule for an eliminator named 'elim'
 is_intro_for :: Name -> Expr -> MaybeT TCMethod CompRule
 is_intro_for elim_name e = do
-  map_comp_rules <- liftM (iext_comp_rules . env_ind_ext . tcr_env) ask
+  map_compRules <- liftM (iext_compRules . env_ind_ext . tcr_env) ask
   intro_fn_const <- liftMaybe $ maybe_constant (getOperator e)
-  comp_rule <- liftMaybe $ Map.lookup (const_name intro_fn_const) map_comp_rules
-  guard (cr_elim_name comp_rule == elim_name)
-  return comp_rule
+  compRule <- liftMaybe $ Map.lookup (constName intro_fn_const) map_compRules
+  guard (cr_elim_name compRule == elim_name)
+  return compRule
 
 -- | For datatypes that support K-axiom, given e an element of that type, we convert (if possible)
 -- to the default constructor. For example, if (e : a = a), then this method returns (eq.refl a)
 to_intro_when_K :: ExtElimInfo -> Expr -> MaybeT TCMethod Expr
 to_intro_when_K einfo e = do
   env <- asks tcr_env
-  assert (eei_K_target einfo) "to_intro_when_K should only be called when K_target holds" (return ())
+  assert (eei_kTarget einfo) "to_intro_when_K should only be called when kTarget holds" (return ())
   app_type <- lift $ inferType e >>= whnf
   app_type_I <- return $ getOperator app_type
   app_type_I_const <- liftMaybe $ maybe_constant app_type_I
-  guard (const_name app_type_I_const == eei_inductive_name einfo)
-  new_intro_app <- liftMaybe $ mk_nullary_intro env app_type (eei_num_params einfo)
-  new_type <- lift $ inferType new_intro_app
+  guard (constName app_type_I_const == eei_inductive_name einfo)
+  new_introApp <- liftMaybe $ mk_nullary_intro env app_type (eei_numParams einfo)
+  new_type <- lift $ inferType new_introApp
   types_eq <- lift $ isDefEq app_type new_type
   guard types_eq
-  return new_intro_app
+  return new_introApp
 
 -- | If 'op_name' is the name of a non-empty inductive datatype, then return the
 --   name of the first introduction rule. Return 'Nothing' otherwise.
 get_first_intro :: Env -> Name -> Maybe Name
 get_first_intro env op_name = do
   mutual_idecls <- Map.lookup op_name (iext_ind_infos $ env_ind_ext env)
-  InductiveDecl _ _ intro_rules <- find (\(InductiveDecl ind_name _ _) -> ind_name == op_name) (mid_idecls mutual_idecls)
+  InductiveDecl _ _ intro_rules <- find (\(InductiveDecl indName _ _) -> indName == op_name) (mid_idecls mutual_idecls)
   IntroRule ir_name _ <- find (\_ -> True) intro_rules
   return ir_name
 
 mk_nullary_intro :: Env -> Expr -> Int -> Maybe Expr
-mk_nullary_intro env app_type num_params =
+mk_nullary_intro env app_type numParams =
   let (op,args) = get_app_op_args app_type in do
     op_const <- maybe_constant op
-    intro_name <- get_first_intro env (const_name op_const)
-    return $ mk_app_seq (mk_constant intro_name (const_levels op_const)) (genericTake num_params args)
+    intro_name <- get_first_intro env (constName op_const)
+    return $ mk_app_seq (mk_constant intro_name (constLevels op_const)) (genericTake numParams args)
 
+{-
 {- Quotient -}
 
 quotient_norm_ext :: Expr -> MaybeT TCMethod Expr
@@ -579,17 +580,17 @@ quotient_norm_ext e = do
   env <- asks tcr_env
   guard (env_quot_enabled env)
   fn <- liftMaybe $ maybe_constant (getOperator e)
-  (mk_pos,arg_pos) <- if const_name fn == quot_lift then return (5,3) else
-                        if const_name fn == quot_ind then return (4,3) else
+  (mk_pos,arg_pos) <- if constName fn == quot_lift then return (5,3) else
+                        if constName fn == quot_ind then return (4,3) else
                           fail "no quot comp rule applies"
-  args <- return $ get_app_args e
+  args <- return $ getAppArgs e
   guard $ genericLength args > mk_pos
   mk <- lift $ whnf (genericIndex args mk_pos)
   case mk of
     App mk_as_app -> do
       mk_fn <- return $ getOperator mk
       mk_fn_const <- liftMaybe $ maybe_constant mk_fn
-      guard $ const_name mk_fn_const == quot_mk
+      guard $ constName mk_fn_const == quot_mk
       let f = genericIndex args arg_pos
           elim_arity = mk_pos + 1
           extra_args = genericDrop elim_arity args in

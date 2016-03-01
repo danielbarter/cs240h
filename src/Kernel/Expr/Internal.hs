@@ -300,9 +300,12 @@ abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
 
 -- Misc
 
-bodyOfLambda :: Expr -> Expr
-bodyOfLambda e = case e of
-  Lambda lam -> bodyOfLambda (bindingBody lam)
+mkProp :: Expr
+mkProp = mkSort Level.mkZero
+
+innerBodyOfLambda :: Expr -> Expr
+innerBodyOfLambda e = case e of
+  Lambda lam -> innerBodyOfLambda (bindingBody lam)
   _ -> e
 
 isConstant :: Expr -> Bool
