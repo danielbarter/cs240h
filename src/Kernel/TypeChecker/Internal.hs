@@ -176,7 +176,7 @@ data TypeCheckerR = TypeCheckerR {
 makeLenses ''TypeCheckerR
 
 data TypeCheckerS = TypeCheckerS {
-  _tcsNextId :: Int,
+  _tcsNextId :: Integer,
   _tcsDeqCache :: DeqCache,
   _tcsInferTypeCache :: Map Expr Expr
   }
@@ -186,17 +186,17 @@ makeLenses ''TypeCheckerS
 mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
 
-mkTypeCheckerS :: Int -> TypeCheckerS
+mkTypeCheckerS :: Integer -> TypeCheckerS
 mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty
 
 type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
 
-tcEval :: Env -> [Name] -> Int -> TCMethod a -> Either TypeError (a, Int)
+tcEval :: Env -> [Name] -> Integer -> TCMethod a -> Either TypeError (a, Integer)
 tcEval env lpNames nextId tcFn =
   let (x, tc) = runReader (runStateT (runExceptT tcFn) (mkTypeCheckerS nextId)) (mkTypeCheckerR env lpNames) in
   (, view tcsNextId tc) <$> x
 
-tcRun :: Env -> [Name] -> Int -> TCMethod a -> Either TypeError a
+tcRun :: Env -> [Name] -> Integer -> TCMethod a -> Either TypeError a
 tcRun env lpNames nextId = fmap fst . (tcEval env lpNames nextId)
 
 check :: Env -> Decl -> Either TypeError ()
@@ -375,7 +375,7 @@ unfoldNameCore w e = case e of
 normalizeExt :: Expr -> TCMethod (Maybe Expr)
 normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e)
 
-gensym :: TCMethod Int
+gensym :: TCMethod Integer
 gensym = tcsNextId %%= \n -> (n, n + 1)
 
 -- is_def_eq

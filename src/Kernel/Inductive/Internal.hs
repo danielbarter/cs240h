@@ -129,7 +129,7 @@ indAssert err b = if b then return () else throwE err
 
 -- TODO(dhs): why did old version add another layer to this?
 mkFreshName :: AddInductiveMethod Name
-mkFreshName = gensym >>= mkSystemNameI
+mkFreshName = gensym >>= return . mkSystemNameI
 
 addInductive :: Env -> IndDecl -> Either IndDeclError Env
 addInductive env idecl =
