@@ -41,7 +41,7 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
-import Lens.Simple (makeLenses, use, view, over, (%=), (.=), (%%=))
+import Lens.Simple (makeLenses, use, uses, view, over, (%=), (.=), (%%=))
 
 import Data.List (genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
 import qualified Data.Maybe as Maybe
@@ -257,8 +257,8 @@ declareIntroRules = do
   mapM_ (\(IntroRule irName irType) -> envAddAxiom irName lpNames irType >> envAddIntroRule irName itName) introRules
 
 -- Declare the eliminator/recursor for each datatype.
-declareElimRules :: AddInductiveMethod ()
-declareElimRules = do
+declareElimRule :: AddInductiveMethod ()
+declareElimRule = do
   initDepElim
   initElimLevel
   initElimInfo
@@ -304,7 +304,7 @@ declareElimRules = do
       case ty of
         Pi pi -> do local <- mkLocalFor pi
                     let body = instantiate (bindingBody pi) (Local local)
-                    (ty, rest) <- checkCondition1 body (paramNum+1)
+                    (ty, rest) <- collectArgsToCheck body (paramNum+1)
                     numParams <- use (addIndIDecl . indDeclNumParams)
                     if paramNum >= numParams
                     then do sort <- ensureType (bindingDomain pi)
@@ -325,7 +325,7 @@ declareElimRules = do
                            majorName <- mkFreshName
                            let majorPremise = mkLocalData majorName (mkName ["major"])
                                               (mkAppSeq (mkAppSeq (Constant indConst) (map Local paramLocals))
-                                                            (map Local indexLocls))
+                                                            (map Local indexLocals))
                            elimLevel <- liftM Maybe.fromJust $ use addIndElimLevel
                            depElim <- liftM Maybe.fromJust $ use addIndDepElim
                            let cType0 = mkSort elimLevel
@@ -345,7 +345,7 @@ declareElimRules = do
           indLevel <- uses addIndIndLevel Maybe.fromJust
           -- Note: this is not the final K-Target check
           addIndKTarget .= envPropProofIrrel env && isZero indLevel && length introRules == 1
-          mapM_ initMinorPremise intro_rules
+          mapM_ initMinorPremise introRules
 
     initMinorPremise :: IntroRule -> AddInductiveMethod ()
     initMinorPremise (IntroRule irName irType) =
@@ -356,21 +356,19 @@ declareElimRules = do
           depElim <- use addIndDepElim
           indLevel <- use addIndIndLevel
           levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
-          (nonrecArgs, recArgs) <- splitIntroRuleType [] [] irName irType 0
-          irBody <- whnf irBody
+          (nonrecArgs, recArgs) <- splitIntroRuleType irName irType
           c <- use (addIndElimInfo . elimInfoC)
           let minorPremiseType0 = mkAppSeq (Local c) indexLocals
-          let minorPremiseType1 =
-              if depElim
-              then let introApp = mkAppSeq
-                                  (mkAppSeq
-                                   (mkAppSeq (mkConstant irName levels)
-                                                 (map Local paramLocals))
-                                   (map Local nonrecArgs))
-                                  (map Local recArgs) in
-                   mkApp minorPremiseType0 introApp
-              else minorPremiseType0
-          inductiveArgs <- constructInductiveArgs recArgs [0..]
+          let minorPremiseType1 = if depElim
+                                  then let introApp = mkAppSeq
+                                                      (mkAppSeq
+                                                       (mkAppSeq (mkConstant irName levels)
+                                                                     (map Local paramLocals))
+                                                       (map Local nonrecArgs))
+                                                      (map Local recArgs) in
+                                       mkApp minorPremiseType0 introApp
+                                  else minorPremiseType0
+          indArgs <- constructIndArgs recArgs [0..]
           minorPremiseName <- mkFreshName
           let minorPremiseType2 = abstractPiSeq nonrecArgs
                                   (abstractPiSeq recArgs
@@ -379,10 +377,10 @@ declareElimRules = do
           addIndElimInfo . elimInfoMinorPremises %= (++ [minorPremise])
 
     splitIntroRuleType :: Name -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
-    splitIntroRuleType irName irType = splitIntroRuleCore [] [] irName irType 0
+    splitIntroRuleType irName irType = splitIntroRuleTypeCore [] [] irName irType 0
 
     splitIntroRuleTypeCore :: [LocalData] -> [LocalData] -> Name -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
-    splitIntroRuleType nonRecArgs recArgs irName irType paramNum =
+    splitIntroRuleTypeCore nonRecArgs recArgs irName irType paramNum =
         do
           numParams <- use (addIndIDecl . indDeclNumParams)
           paramLocal <- uses addIndParamLocals (!! paramNum)
@@ -398,11 +396,11 @@ declareElimRules = do
                         splitIntroRuleTypeCore newNonRecArgs newRecArgs irName (instantiate (bindingBody pi) (Local local)) (paramNum+1)
             _ -> return (nonRecArgs, recArgs)
 
-    constructInductiveArgs :: [LocalData] -> [Int] -> AddInductiveMethod [LocalData]
-    constructInductiveArgs [] _ = return []
-    constructInductiveArgs (recArg : recArgs) (recArgNum : recArgNums) =
+    constructIndArgs :: [LocalData] -> [Int] -> AddInductiveMethod [LocalData]
+    constructIndArgs [] _ = return []
+    constructIndArgs (recArg : recArgs) (recArgNum : recArgNums) =
         do
-          restIndArgs <- constructInductiveArgs recArgs recArgNums
+          restIndArgs <- constructIndArgs recArgs recArgNums
           recArgType <- whnf . localType recArg
           (xs, recArgTypeBody) <- constructIndArgArgs recArgType
           recArgTypeBody <- whnf recArgTypeBody
