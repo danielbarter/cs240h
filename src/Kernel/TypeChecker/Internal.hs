@@ -43,7 +43,7 @@ import qualified Data.Maybe as Maybe
 data IntroRule = IntroRule Name Expr deriving (Show)
 
 data IndDecl = IndDecl {
-  _indDeclNumParams :: Integer,
+  _indDeclNumParams :: Int,
   _indDeclLPNames :: [Name],
   _indDeclName :: Name,
   _indDeclType :: Expr,
@@ -599,12 +599,6 @@ deqCacheIsEquiv e1 e2 = do
 
 liftMaybe :: (MonadPlus m) => Maybe a -> m a
 liftMaybe = maybe mzero return
-
---inductiveNormExt :: Expr -> MaybeT TCMethod Expr
---inductiveNormExt e = undefined
-
---quotientNormExt :: Expr -> MaybeT TCMethod Expr
---quotientNormExt e = undefined
 
 -- | Reduce terms 'e' of the form 'elim_k A C e p[A,b] (intro_k_i A b u)'
 inductiveNormExt :: Expr -> MaybeT TCMethod Expr

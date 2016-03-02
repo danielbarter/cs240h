@@ -29,9 +29,8 @@ import Kernel.TypeChecker (IndDecl(IndDecl)
                           , IntroRule(IntroRule)
                           , CompRule(CompRule)
                           , Env
-                          , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule, envLookupDecl
                           , envPropProofIrrel, envPropImpredicative
-                          , envAddAxiom
+                          , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule, envLookupDecl
                           , TypeError, TCMethod)
 
 import qualified Kernel.TypeChecker as TypeChecker
@@ -42,7 +41,7 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
-import Lens.Simple (makeLenses, use, uses, view, over, (%=), (.=), (%%=))
+import Lens.Simple (makeLenses, use, uses, view, over, (%=), (.=), (%%=), _Just)
 
 import Data.List (genericIndex,genericLength,genericTake,genericDrop,genericSplitAt)
 import qualified Data.Maybe as Maybe
@@ -61,11 +60,13 @@ data IndDeclError = NumParamsMismatchInIndDecl Int Int
                         deriving (Eq,Show)
 
 data ElimInfo = ElimInfo {
-  elimInfoC :: LocalData, -- type former constant
-  elimInfoIndices :: [LocalData], --local constant for each index
-  elimInfoMajorPremise :: LocalData, -- major premise for each inductive decl
-  elimInfoMinorPremises :: [LocalData] -- minor premise for each introduction rule
+  _elimInfoC :: LocalData, -- type former constant
+  _elimInfoIndices :: [LocalData], --local constant for each index
+  _elimInfoMajorPremise :: LocalData, -- major premise for each inductive decl
+  _elimInfoMinorPremises :: [LocalData] -- minor premise for each introduction rule
 } deriving (Eq,Show)
+
+makeLenses ''ElimInfo
 
 data AddInductiveS = AddInductiveS {
   -- TODO(dhs): much better to put these all in a different structure and populate them at once
@@ -150,13 +151,13 @@ addInductiveCore = do
 
 checkIndType :: AddInductiveMethod ()
 checkIndType = do
-  (IndDecl numParams lpNames name ty introRules) <- asks _addIndIDecl
+  (IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
   checkType ty lpNames
-  let (paramLocals, rest) = telescopePiN numParams ty
-  indAssert (length paramLocals == numParams) $ NumParamsMismatchInIndDecl (length paramLocals) numParams
-  let (indexLocals, body) = telescopePi rest
+  (paramLocals, rest) <- telescopePiN numParams ty
+  indAssert (NumParamsMismatchInIndDecl (length paramLocals) numParams) (length paramLocals == numParams)
+  (indexLocals, body) <- telescopePi rest
   sort <- ensureSort body lpNames
-  lpNames <- map mkLevelParam . indDeclLPNames <$> asks addIndIDecl
+  lpNames <- uses addIndIDecl (map mkLevelParam . view indDeclLPNames)
   addIndIsDefinitelyNotZero .= isDefinitelyNotZero (sortLevel sort)
   addIndIndConst .= Just (ConstantData name lpNames)
   addIndIndLevel .= Just (sortLevel sort)
@@ -191,8 +192,7 @@ checkIndType = do
 declareIndType :: AddInductiveMethod ()
 declareIndType = do
   idecl@(IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
-  -- TODO(dhs): put Env and TypeChecker in the same module, and only expose `envAddAxiom` and `envAddDefinition`
-  addIndEnv %= envAddAxiom lpNames name ty
+  envAddAxiom name lpNames ty
   addIndEnv %= envAddIndDecl idecl
 
 
@@ -223,20 +223,20 @@ checkIntroRules = do
            paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
            if paramNum < numParams
              then do let local = paramLocals !! paramNum
-                     isDefEq (bindingDomain pi) (localType local) >>=
+                     isDefEq (bindingDomain pi) (localType local) lpNames >>=
                        indAssert (ArgDoesNotMatchInductiveParameters paramNum name)
                      checkIntroRuleCore (paramNum+1) foundRec name (instantiate (bindingBody pi) (Local local))
              else do sort <- ensureType (bindingDomain pi) lpNames
                      indLevel <- liftM Maybe.fromJust $ use addIndIndLevel
                      env <- use addIndEnv
-                     indAssert (levelNotBiggerThan (sortLevel sort) indLevel || (isZero indLevel && envPropImpredicative env))
-                       (UniLevelOfArgTooBig paramNum name (sortLevel sort) indLevel)
+                     indAssert (UniLevelOfArgTooBig paramNum name (sortLevel sort) indLevel)
+                                   (levelNotBiggerThan (sortLevel sort) indLevel || (isZero indLevel && view envPropImpredicative env))
                      domainTy <- whnf (bindingDomain pi)
                      checkPositivity domainTy name paramNum
                      argIsRec <- isRecArg domainTy
-                     indAssert (not foundRec || argIsRec) (NonRecArgAfterRecArg paramNum name)
+                     indAssert (NonRecArgAfterRecArg paramNum name) (not foundRec || argIsRec)
                      ty <- if argIsRec
-                           then indAssert (closed (bindingBody pi)) (InvalidRecArg paramNum name) >> return (bindingBody pi)
+                           then indAssert (InvalidRecArg paramNum name) (closed (bindingBody pi)) >> return (bindingBody pi)
                            else mkLocalFor pi >>= return . instantiate (bindingBody pi) . Local
                      checkIntroRuleCore (paramNum+1) argIsRec name ty
          _ -> isValidIndApp ty >>= indAssert (InvalidReturnType name)
@@ -248,10 +248,10 @@ checkIntroRules = do
         itOccurs <- indTypeOccurs ty
         if not itOccurs then return () else
           case ty of
-           Pi pi -> do indTypeOccurs (bindingDomain pi) >>= flip indAssert (NonPosOccurrence paramNum name) . not
+           Pi pi -> do indTypeOccurs (bindingDomain pi) >>= indAssert (NonPosOccurrence paramNum name) . not
                        local <- mkLocalFor pi
                        checkPositivity (instantiate (bindingBody pi) $ Local local) name paramNum
-           _ -> isValidIndApp ty >>= flip indAssert (NonValidOccurrence paramNum name)
+           _ -> isValidIndApp ty >>= indAssert (NonValidOccurrence paramNum name)
 
       indTypeOccurs :: Expr -> AddInductiveMethod Bool
       indTypeOccurs e = do
@@ -264,11 +264,12 @@ checkIntroRules = do
 
 isValidIndApp :: Expr -> AddInductiveMethod Bool
 isValidIndApp e = do
-  indTypeConst <- liftM Maybe.fromJust $ use addIndIndConst
-  paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
-  numArgs <- use addIndNumArgs
+  indTypeConst <- uses addIndIndConst Maybe.fromJust
+  paramLocals <- uses addIndParamLocals Maybe.fromJust
+  lpNames <- use (addIndIDecl . indDeclLPNames)
+  numArgs <- uses addIndNumArgs Maybe.fromJust
   let (op, args) = getAppOpArgs e
-  opEq <- isDefEq op (Constant indTypeConst)
+  opEq <- isDefEq op (Constant indTypeConst) lpNames
   return $ opEq && length args == numArgs && all (uncurry (==)) (zip args (map Local paramLocals))
 
 isRecArg :: Expr -> AddInductiveMethod Bool
@@ -280,8 +281,8 @@ isRecArg e = do
 
 declareIntroRules :: AddInductiveMethod ()
 declareIntroRules = do
-  (IndDecl _ lpNames itName _ introRules) <- use addIndIDecl
-  mapM_ (\(IntroRule irName irType) -> envAddAxiom irName lpNames irType >> envAddIntroRule irName itName) introRules
+  (IndDecl _ lpNames indName _ introRules) <- use addIndIDecl
+  mapM_ (\(IntroRule irName irType) -> envAddAxiom irName lpNames irType >> addIndEnv %= envAddIntroRule irName indName) introRules
 
 computeElimRule :: AddInductiveMethod ()
 computeElimRule = do
@@ -292,8 +293,8 @@ computeElimRule = do
     initDepElim :: AddInductiveMethod ()
     initDepElim = do
       env <- use addIndEnv
-      indLevel <- use addIndIndLevel
-      addIndDepElim .= not (envPropImpredicative env && envPropProofIrrel env && isZero indLevel)
+      indLevel <- uses addIndIndLevel Maybe.fromJust
+      addIndDepElim .= not (view envPropImpredicative env && view envPropProofIrrel env && isZero indLevel)
 
     initElimLevel :: AddInductiveMethod ()
     initElimLevel = do
@@ -307,7 +308,7 @@ computeElimRule = do
     elimOnlyAtLevelZero = do
       env <- use addIndEnv
       isDefinitelyNotZero <- use addIndIsDefinitelyNotZero
-      if envPropImpredicative env && isDefinitelyNotZero then return False else do
+      if view envPropImpredicative env && isDefinitelyNotZero then return False else do
         (IndDecl _ _ _ _ introRules) <- use addIndIDecl
         case introRules of
          [] -> return False
@@ -321,7 +322,7 @@ computeElimRule = do
            (irBodyType, argsToCheck) <- collectArgsToCheck irType 0
            let resultArgs = getAppArgs irBodyType
            results <- mapM (\argToCheck -> if not (argToCheck `elem` resultArgs) then return True else return False) $ map Local argsToCheck
-           return $ any results
+           return $ any (==True) results
 
     {- We proceed through the arguments to the introRule, and return (innerBody, [locals for all (non-param) args that do not live in Prop]) -}
     collectArgsToCheck :: Expr -> Int -> AddInductiveMethod (Expr, [LocalData])
@@ -344,23 +345,24 @@ computeElimRule = do
 
     initCIndicesMajor :: AddInductiveMethod ()
     initCIndicesMajor = do (IndDecl _ _ indName indType introRules) <- use addIndIDecl
-                           paramLocals <- use addIndParamLocals
-                           indexLocals <- use addIndIndexLocals
-                           indBody <-use addIndIndBody
-                           indConst <- use addIndIndConst
+                           paramLocals <- uses addIndParamLocals Maybe.fromJust
+                           indexLocals <- uses addIndIndexLocals Maybe.fromJust
+                           indBody <-uses addIndIndBody Maybe.fromJust
+                           indConst <- uses addIndIndConst Maybe.fromJust
                            majorName <- mkFreshName
                            let majorPremise = mkLocalData majorName (mkName ["major"])
                                               (mkAppSeq (mkAppSeq (Constant indConst) (map Local paramLocals))
                                                             (map Local indexLocals))
-                           elimLevel <- liftM Maybe.fromJust $ use addIndElimLevel
-                           depElim <- liftM Maybe.fromJust $ use addIndDepElim
+                                              BinderDefault
+                           elimLevel <- uses addIndElimLevel Maybe.fromJust
+                           depElim <- use addIndDepElim
                            let cType0 = mkSort elimLevel
                            let cType1 = if depElim then abstractPi majorPremise cType0 else cType0
                            let cType2 = abstractPiSeq indexLocals cType1
                            let cPPName = mkName ["C"]
                            cName <- mkFreshName
                            let c = mkLocalData cName cPPName cType2 BinderDefault
-                           addIndElimInfo .= Just $ ElimInfo c indexLocals majorPremise []
+                           addIndElimInfo .= (Just $ ElimInfo c indexLocals majorPremise [])
 
 
     initMinorPremises :: AddInductiveMethod()
@@ -370,21 +372,21 @@ computeElimRule = do
           env <- use addIndEnv
           indLevel <- uses addIndIndLevel Maybe.fromJust
           -- Note: this is not the final K-Target check
-          addIndKTarget .= envPropProofIrrel env && isZero indLevel && length introRules == 1
+          addIndKTarget .= (view envPropProofIrrel env && isZero indLevel && length introRules == 1)
           mapM_ initMinorPremise introRules
 
     initMinorPremise :: IntroRule -> AddInductiveMethod ()
     initMinorPremise (IntroRule irName irType) =
         do
-          paramLocals <- use addIndParamLocals
-          indexLocals <- use addIndIndexLocals
-          elimInfo <- use addIndElimInfo
+          paramLocals <- uses addIndParamLocals Maybe.fromJust
+          indexLocals <- uses addIndIndexLocals Maybe.fromJust
+          elimInfo <- uses addIndElimInfo Maybe.fromJust
           depElim <- use addIndDepElim
-          indLevel <- use addIndIndLevel
+          indLevel <- uses addIndIndLevel Maybe.fromJust
           levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
           (nonrecArgs, recArgs) <- splitIntroRuleType irType
-          c <- use (addIndElimInfo . elimInfoC)
-          let minorPremiseType0 = mkAppSeq (Local c) indexLocals
+          c <- use (addIndElimInfo . _Just . elimInfoC)
+          let minorPremiseType0 = mkAppSeq (Local c) (map Local indexLocals)
           let minorPremiseType1 = if depElim
                                   then let introApp = mkAppSeq
                                                       (mkAppSeq
@@ -399,10 +401,10 @@ computeElimRule = do
           let minorPremiseType2 = abstractPiSeq nonrecArgs
                                   (abstractPiSeq recArgs
                                    (abstractPiSeq indArgs minorPremiseType1))
-          let minorPremise = mkLocalData minorPremiseName (mkName ["e"]) minorPremiseType2
-          addIndElimInfo . elimInfoMinorPremises %= (++ [minorPremise])
+          let minorPremise = mkLocalData minorPremiseName (mkName ["e"]) minorPremiseType2 BinderDefault
+          (addIndElimInfo . __Just . elimInfoMinorPremises) %= (++ [minorPremise])
 
-splitIntroRuleType :: Name -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
+splitIntroRuleType :: Expr -> AddInductiveMethod ([LocalData], [LocalData])
 splitIntroRuleType irType = splitIntroRuleTypeCore [] [] irType 0
     where
       splitIntroRuleTypeCore :: [LocalData] -> [LocalData] -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
@@ -557,6 +559,12 @@ isDefEq e1 e2 lpNames = do
   case TypeChecker.tcEval env lpNames nextId (TypeChecker.isDefEq e1 e2) of
     Left tcErr -> throwE $ TypeCheckError tcErr "isDefEq"
     Right (b, next) -> addIndNextId .= next >> return b
+
+envAddAxiom :: Name -> [Name] -> Expr -> AddInductiveMethod ()
+envAddAxiom name lpNames ty =
+  case TypeChecker.envAddAxiom name lpNames ty of
+    Left tcErr -> throwE $ TypeCheckError tcErr "envAddAxiom"
+    Right env -> addIndEnv .= env
 
 {-
 certify_ideclaration :: IndDecl -> AddInductiveMethod CertifiedDeclaration
