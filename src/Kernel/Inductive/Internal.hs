@@ -143,7 +143,8 @@ addInductiveCore = do
   declareIndType
   checkIntroRules
   declareIntroRules
-  declareElimRules
+  computeElimRule
+  declareElimRule
   mkCompRules
 
 checkIndType :: AddInductiveMethod ()
@@ -235,34 +236,34 @@ checkIntroRules = do
                                              Constant const -> constName const == constName indTypeConst
                                              _ -> False) e
 
-      isValidIndApp :: Expr -> AddInductiveMethod Bool
-      isValidIndApp e = do
-        indTypeConst <- liftM Maybe.fromJust $ use addIndIndConst
-        paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
-        numArgs <- use addIndNumArgs
-        let (op, args) = getAppOpArgs e
-        opEq <- isDefEq op (Constant indTypeConst)
-        return $ opEq && length args == numArgs && all (uncurry (==)) (zip args (map Local paramLocals))
 
-      isRecArg :: Expr -> AddInductiveMethod Bool
-      isRecArg e = do
-        e <- whnf e
-        case e of
-         Pi pi -> mkLocalFor pi >>= isRecArg . (instantiate (bindingBody pi)) . Local
-         _ -> isValidIndApp e
+
+isValidIndApp :: Expr -> AddInductiveMethod Bool
+isValidIndApp e = do
+  indTypeConst <- liftM Maybe.fromJust $ use addIndIndConst
+  paramLocals <- liftM Maybe.fromJust $ use addIndParamLocals
+  numArgs <- use addIndNumArgs
+  let (op, args) = getAppOpArgs e
+  opEq <- isDefEq op (Constant indTypeConst)
+  return $ opEq && length args == numArgs && all (uncurry (==)) (zip args (map Local paramLocals))
+
+isRecArg :: Expr -> AddInductiveMethod Bool
+isRecArg e = do
+  e <- whnf e
+  case e of
+    Pi pi -> mkLocalFor pi >>= isRecArg . (instantiate (bindingBody pi)) . Local
+    _ -> isValidIndApp e
 
 declareIntroRules :: AddInductiveMethod ()
 declareIntroRules = do
   (IndDecl _ lpNames itName _ introRules) <- use addIndIDecl
   mapM_ (\(IntroRule irName irType) -> envAddAxiom irName lpNames irType >> envAddIntroRule irName itName) introRules
 
--- Declare the eliminator/recursor for each datatype.
-declareElimRule :: AddInductiveMethod ()
-declareElimRule = do
+computeElimRule :: AddInductiveMethod ()
+computeElimRule = do
   initDepElim
   initElimLevel
   initElimInfo
-  liftM declareElimRule $ use addIndIDecl
   where
     initDepElim :: AddInductiveMethod ()
     initDepElim = do
@@ -426,6 +427,27 @@ declareElimRule = do
                       constructIndArgArgsCore (xs ++ [local]) (instantiate (bindingBody pi) (Local local))
           _ -> return (xs, recArgType)
 
+declareElimRule :: AddInductiveMethod ()
+declareElimRule =
+  do
+    (IndDecl numParams lpNames indName indType introRules) <- use addIndIDecl
+    c <- uses addIndElimInfo (elimInfoC . Maybe.fromJust)
+    majorPremise <- uses addIndElimInfo (elimInfoMajorPremises . Maybe.fromJust)
+    minorPremises <- uses addIndElimInfo (elimInfoMinorPremises . Maybe.fromJust)
+    paramLocals <- use addIndParamLocals
+    indexLocals <- use addIndIndexLocals
+    lpNames < use (addIndIDecl . indDeclLPNames)
+    elimLevel <- use addIndElimLevel
+    let elimLPNames = case maybeParamName elimLevel of Just n -> n : lpNames ; Nothing -> lpNames
+    depElim <- use addIndDepElim
+    let elimType0 = mkAppSeq (Local c) (map Local indexLocals)
+    let elimType1 = if depElim then mkApp elimType0 (Local majorPremise) else elimType0
+    let elimType2 = abstractPi majorPremise elimType1
+    let elimType3 = abstractPiSeq indexLocals elimType2
+    let elimType4 = foldr abstractPi elimType3 minorPremises
+    let elimType5 = abstractPi c elimType4
+    let elimType6 = abstractPiSeq paramLocals elimType5
+    envAddAxiom (nameRConsS indName "rec") elimLPNames elimType6
 
 {-
 declare_elim_rule (IndDecl name ty intro_rules) d_idx = do

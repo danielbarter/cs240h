@@ -199,3 +199,9 @@ levelNotBiggerThan l1 l2 = go l1 l2 where
      if isZero l1' || l1' == l2' then k1 <= k2 else
        if k1 == k2 && k1 > 0 then go l1' l2' else
          False
+
+{- Misc -}
+maybeParamName :: Level -> Maybe Name
+maybeParamName l = case l of
+                    LevelParam n -> Just n
+                    _ -> Nothing

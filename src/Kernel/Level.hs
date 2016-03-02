@@ -15,5 +15,6 @@ module Kernel.Level (
   , instantiateLevel
   , getUndefParam, getUndefGlobal
   , levelNotBiggerThan
+  , maybeParamName
   ) where
 import Kernel.Level.Internal
