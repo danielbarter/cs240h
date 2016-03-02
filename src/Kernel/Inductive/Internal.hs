@@ -49,14 +49,14 @@ import qualified Data.Maybe as Maybe
 
 import Debug.Trace
 
-data IndDeclError = NumParamsMismatchInIndDecl Integer Integer
-                        | ArgDoesNotMatchInductiveParameters Integer Name
-                        | UniLevelOfArgTooBig Integer Name Level Level
-                        | NonRecArgAfterRecArg Integer Name
-                        | InvalidRecArg Integer Name
+data IndDeclError = NumParamsMismatchInIndDecl Int Int
+                        | ArgDoesNotMatchInductiveParameters Int Name
+                        | UniLevelOfArgTooBig Int Name Level Level
+                        | NonRecArgAfterRecArg Int Name
+                        | InvalidRecArg Int Name
                         | InvalidReturnType Name
-                        | NonPosOccurrence Integer Name
-                        | NonValidOccurrence Integer Name
+                        | NonPosOccurrence Int Name
+                        | NonValidOccurrence Int Name
                         | TypeCheckError TypeChecker.TypeError String
                         deriving (Eq,Show)
 
@@ -116,7 +116,7 @@ type AddInductiveMethod = ExceptT IndDeclError (State AddInductiveS)
 {- Misc -}
 -- TODO(dhs): put these at the bottom
 
-gensym :: AddInductiveMethod Int
+gensym :: AddInductiveMethod Integer
 gensym = addIndNextId %%= \n -> (n, n + 1)
 
 mkLocalFor :: BindingData -> AddInductiveMethod LocalData
@@ -324,7 +324,7 @@ computeElimRule = do
            return $ any results
 
     {- We proceed through the arguments to the introRule, and return (innerBody, [locals for all (non-param) args that do not live in Prop]) -}
-    collectArgsToCheck :: Expr -> Integer -> AddInductiveMethod (Expr, [LocalData])
+    collectArgsToCheck :: Expr -> Int -> AddInductiveMethod (Expr, [LocalData])
     collectArgsToCheck ty paramNum =
       case ty of
         Pi pi -> do local <- mkLocalFor pi
