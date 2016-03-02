@@ -78,6 +78,8 @@ data AddInductiveS = AddInductiveS {
 
   _addIndElimLevel :: Maybe Level,
   _addIndParamLocals :: Maybe [LocalData], -- local constants used to represent global parameters
+  _addIndIndexLocals :: Maybe [LocalData], -- local constants used to represent indices
+  _addIndIndBody :: Maybe Expr, -- inner body of indType
   _addIndIndLevel :: Maybe Level, -- the levels for each inductive datatype in [m_idecls]
   _addIndIndConst :: Maybe ConstantData, -- the constants for each inductive datatype in [m_idecls]
   _addIndNumArgs :: Maybe Int, -- total number of arguments (params + indices) for each inductive datatype in m_idecls
@@ -99,7 +101,8 @@ mkAddInductiveS env idecl = AddInductiveS {
   _addIndDepElim = False,
   _addIndElimLevel = Nothing,
 
-  _addIndParamLocals = [],
+  _addIndParamLocals = Nothing,
+  _addIndIndexLocals = Nothing,
   _addIndIndLevel = Nothing,
   _addIndIndConst = Nothing,
   _addIndNumArgs = Nothing,
@@ -157,6 +160,8 @@ checkIndType = do
   addIndIndLevel .= Just (sortLevel sort)
   addIndNumArgs .= Just (length indexLocals)
   addIndParamLocals .= Just paramLocals
+  addIndIndexLocals .= Just indexLocals
+  addIndIndBody .= Just body
 
 -- Add all datatype declarations to environment.
 declareIndType :: AddInductiveMethod ()
@@ -246,120 +251,95 @@ checkIntroRules = do
          Pi pi -> mkLocalFor pi >>= isRecArg . (instantiate (bindingBody pi)) . Local
          _ -> isValidIndApp e
 
-{-
--- Add all introduction rules (aka constructors) to environment.
-declareIntroRules =
-  gets m_idecls >>=
-  mapM_ (\(IndDecl it_name _ intro_rules) -> do
-            mapM_ (\(IntroRule ir_name ty) -> do
-                      level_names <- gets m_level_names
-                      cdecl <- certify_declaration ir_name level_names ty
-                      update_m_env (flip env_add cdecl)
-                      ext_add_intro_info ir_name it_name)
-              intro_rules)
+declareIntroRules :: AddInductiveMethod ()
+declareIntroRules = do
+  (IndDecl _ lpNames itName _ introRules) <- use addIndIDecl
+  mapM_ (\(IntroRule irName irType) -> envAddAxiom irName lpNames irType >> envAddIntroRule irName itName) introRules
 
 -- Declare the eliminator/recursor for each datatype.
+declareElimRules :: AddInductiveMethod ()
 declareElimRules = do
-  init_dep_elim
-  init_elim_level
-  init_elim_info
-  idecls <- gets m_idecls
-  mapM_ (uncurry declare_elim_rule) (zip idecls [0..])
+  initDepElim
+  initElimLevel
+  initElimInfo
+  liftM declareElimRule $ use addIndIDecl
+  where
+    initDepElim :: AddInductiveMethod ()
+    initDepElim = do
+      env <- use addIndEnv
+      indLevel <- use addIndIndLevel
+      addIndDepElim .= not (envPropImpredicative env && envPropProofIrrel env && isZero indLevel)
 
-init_dep_elim = do
-  env <- gets m_env
-  it_levels <- gets m_it_levels
-  case it_levels of
-    it_level : _ ->
-      modify (\ind_data -> ind_data { m_dep_elim = not (is_impredicative env && is_prop_proof_irrel env && is_zero it_level) })
+    initElimLevel :: AddInductiveMethod ()
+    initElimLevel = do
+      onlyAtZero <- elimOnlyAtLevelZero
+      if onlyAtZero
+        then addIndElimLevel .= Just mkZero
+        else addIndElimLevel .= Just (mkLevelParam (mkSystemNameS "elimLevel"))
 
--- Return true if type formers C in the recursors can only map to Type.{0}
-elim_only_at_universe_zero = do
-  only_at_zero <- runExceptT elim_only_at_universe_zero_core
-  case only_at_zero of
-    Left b -> return b
-    Right () -> return False
-
-elim_only_at_universe_zero_core :: ExceptT Bool AddInductiveMethod ()
-elim_only_at_universe_zero_core = do
-  env <- gets m_env
-  idecls <- gets m_idecls
-  is_not_zero <- gets m_is_not_zero
-  if is_impredicative env && is_not_zero then throwE False else return ()
-  case idecls of
-    d1:d2:_ -> throwE True
-    [(IndDecl _ _ [])] -> throwE False
-    [(IndDecl _ _ (_:_:_))] -> throwE True
-    [(IndDecl _ _ [(IntroRule name ty)])] -> do
-      {- We have only one introduction rule, the final check is, the type of each argument that is not a parameter:
+    -- Return true if type formers C in the recursors can only map to Type.{0}
+    elimOnlyAtLevelZero :: AddInductiveMethod Bool
+    elimOnlyAtLevelZero = do
+      env <- use addIndEnv
+      isDefinitelyNotZero <- use addIndIsDefinitelyNotZero
+      if envPropImpredicative env && isDefinitelyNotZero then return False else do
+        (IndDecl _ _ _ _ introRules) <- use addIndIDecl
+        case introRules of
+         [] -> return False
+         (_:_:_) -> return True
+         [IntroRule irName irType] -> do
+         {- We have only one introduction rule, the final check is, the type of each argument that is not a parameter:
           1- It must live in Type.{0}, *OR*
           2- It must occur in the return type. (this is essentially what is called a non-uniform parameter in Coq).
              We can justify 2 by observing that this information is not a *secret* it is part of the type.
              By eliminating to a non-proposition, we would not be revealing anything that is not already known. -}
-      (ty,args_to_check) <- lift $ check_condition1 ty 0
-      result_args <- return $ get_app_args ty
-      mapM_ (\arg_to_check -> if not (arg_to_check `elem` result_args) then throwE True else return ())
-        (map Local args_to_check)
+           (irBodyType, argsToCheck) <- collectArgsToCheck irType 0
+           let resultArgs = getAppArgs irBodyType
+           results <- mapM (\argToCheck -> if not (argToCheck `elem` resultArgs) then return True else return False) $ map Local argsToCheck
+           return $ any results
 
-check_condition1 :: Expression -> Integer -> AddInductiveMethod (Expression,[LocalData])
-check_condition1 (Pi pi) paramNum = do
-  local <- mk_local_for pi
-  body <- return $ instantiate (bindingBody pi) (Local local)
-  (ty,rest) <- check_condition1 body (paramNum+1)
-  num_params <- gets m_num_params
-  if paramNum >= num_params
-    then do sort <- ensure_type (bindingDomain pi)
-            return $ if not (is_zero (sort_level sort)) then (ty,local : rest) else (ty,rest)
-    else return (ty,rest)
+    {- We proceed through the arguments to the introRule, and return (innerBody, [locals for all (non-param) args that do not live in Prop]) -}
+    collectArgsToCheck :: Expr -> Integer -> AddInductiveMethod (Expr, [LocalData])
+    collectArgsToCheck ty paramNum =
+      case ty of
+        Pi pi -> do local <- mkLocalFor pi
+                    let body = instantiate (bindingBody pi) (Local local)
+                    (ty, rest) <- checkCondition1 body (paramNum+1)
+                    numParams <- use (addIndIDecl . indDeclNumParams)
+                    if paramNum >= numParams
+                    then do sort <- ensureType (bindingDomain pi)
+                            return $ if not (isZero (sortLevel sort)) then (ty, local : rest) else (ty, rest)
+                    else return (ty, rest)
+        _ -> return (ty, [])
 
-check_condition1 ty _ = return (ty,[])
 
--- Initialize m_elim_level.
-init_elim_level = do
-  only_at_zero <- elim_only_at_universe_zero
-  if only_at_zero
-    then modify (\ind_data -> ind_data { m_elim_level = Just mk_zero })
-    else modify (\ind_data -> ind_data { m_elim_level = Just (mk_level_param (mk_system_name_s "elim_level")) })
+    initElimInfo :: AddInductiveMethod ()
+    initElimInfo = initCIndicesMajor >> initMinorPremises
 
-init_elim_info = do
-  idecls <- gets m_idecls
-  mapM_ (uncurry populate_C_indices_major) (zip idecls [0..])
-  mapM_ (uncurry populate_minor_premises) (zip idecls [0..])
+    initCIndicesMajor :: AddInductiveMethod ()
+    initCIndicesMajor = do (IndDecl _ _ indName indType introRules) <- use addIndIDecl
+                           paramLocals <- use addIndParamLocals
+                           indexLocals <- use addIndIndexLocals
+                           indBody <-use addIndIndBody
+                           indConst <- use addIndIndConst
+                           majorName <- mkFreshName
+                           let majorPremise = mkLocalData majorName (mkName ["major"])
+                                              (mkAppSeq (mkAppSeq (Constant indConst) (map Local paramLocals))
+                                                            (map Local indexLocls))
+                           elimLevel <- liftM Maybe.fromJust $ use addIndElimLevel
+                           depElim <- liftM Maybe.fromJust $ use addIndDepElim
+                           let cType0 = mkSort elimLevel
+                           let cType1 = if depElim then abstractPi majorPremise cType0 else cType0
+                           let cType2 = abstractPiSeq indexLocals cType1
+                           let cPPName = mkName ["C"]
+                           cName <- mkFreshName
+                           let c = mkLocalData cName cPPName cType2 BinderDefault
+                           addIndElimInfo .= Just $ ElimInfo c indexLocals majorPremise []
 
-populate_C_indices_major :: IndDecl -> Integer -> AddInductiveMethod ()
-populate_C_indices_major (IndDecl name ty intro_rules) d_idx = do
-  (indices,body) <- build_indices ty 0
-  fresh_name_major <- mk_fresh_name
-  it_consts <- gets m_it_consts
-  param_consts <- gets m_param_consts
-  major_premise <- return $ mk_local_data fresh_name_major (mk_name ["n"])
-                   (mk_app_seq (mk_app_seq
-                                (Constant $ genericIndex it_consts d_idx) (map Local param_consts))
-                    (map Local indices))
-  elim_level <- gets m_elim_level
-  c_ty <- return $ mk_sort (Maybe.fromJust elim_level)
-  dep_elim <- gets m_dep_elim
-  c_ty <- return $ if dep_elim then abstract_pi major_premise c_ty else c_ty
-  c_ty <- return $ abstract_pi_seq indices c_ty
-  num_its <- liftM (genericLength . m_idecls) get
-  c_name <- return $ if num_its > 1 then name_append_i (mk_name ["C"]) d_idx else mk_name ["C"]
-  fresh_name_C <- mk_fresh_name
-  c <- return $ mk_local_data fresh_name_C c_name c_ty
-  modify (\ind_data -> ind_data { m_elim_infos = (m_elim_infos ind_data) ++ [ElimInfo c indices major_premise []] })
 
-build_indices :: Expression -> Integer -> AddInductiveMethod ([LocalData],Expression)
-build_indices (Pi pi) paramNum = do
-  num_params <- gets m_num_params
-  use_param <- return $ paramNum < num_params
-  local <- if use_param
-           then liftM (flip genericIndex paramNum . m_param_consts) get
-           else mk_local_for pi
-  (indices,body) <- build_indices (instantiate (bindingBody pi) (Local local)) (paramNum+1)
-  if use_param
-    then return (indices,body)
-    else return (local:indices,body)
+    initMinorPremises :: AddInductiveMethod()
+    initMinorPremises = do
 
-build_indices ty paramNum = return ([],ty)
 
 populate_minor_premises :: IndDecl -> Integer -> AddInductiveMethod ()
 populate_minor_premises (IndDecl name ty intro_rules) d_idx = do
@@ -580,7 +560,7 @@ certify_ideclaration (IndDecl name ty intro_rules) = do
   level_names <- gets m_level_names
   certify_declaration name level_names ty
 
-certify_declaration :: Name -> [Name] -> Expression -> AddInductiveMethod CertifiedDeclaration
+certify_declaration :: Name -> [Name] -> Expr -> AddInductiveMethod CertifiedDeclaration
 certify_declaration name level_names ty = do
   env <- gets m_env
   next_id <- gets m_next_id
