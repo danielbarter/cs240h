@@ -11,6 +11,7 @@ module Kernel.TypeChecker (
   IndDecl(IndDecl), indDeclNumParams, indDeclLPNames, indDeclName, indDeclType, indDeclIntroRules
   , IntroRule(IntroRule)
   , CompRule(CompRule)
+  , ElimInfo(ElimInfo)
   , Env
   , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
   , envLookupDecl
