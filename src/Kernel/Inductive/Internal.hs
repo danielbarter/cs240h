@@ -338,92 +338,98 @@ declareElimRules = do
 
 
     initMinorPremises :: AddInductiveMethod()
-    initMinorPremises = do
+    initMinorPremises =
+        do
+          (IndDecl _ _ indName indType introRules) <- use addIndIDecl
+          env <- use addIndEnv
+          indLevel <- uses addIndIndLevel Maybe.fromJust
+          -- Note: this is not the final K-Target check
+          addIndKTarget .= envPropProofIrrel env && isZero indLevel && length introRules == 1
+          mapM_ initMinorPremise intro_rules
+
+    initMinorPremise :: IntroRule -> AddInductiveMethod ()
+    initMinorPremise (IntroRule irName irType) =
+        do
+          paramLocals <- use addIndParamLocals
+          indexLocals <- use addIndIndexLocals
+          elimInfo <- use addIndElimInfo
+          depElim <- use addIndDepElim
+          indLevel <- use addIndIndLevel
+          levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
+          (nonrecArgs, recArgs) <- splitIntroRuleType [] [] irName irType 0
+          irBody <- whnf irBody
+          c <- use (addIndElimInfo . elimInfoC)
+          let minorPremiseType0 = mkAppSeq (Local c) indexLocals
+          let minorPremiseType1 =
+              if depElim
+              then let introApp = mkAppSeq
+                                  (mkAppSeq
+                                   (mkAppSeq (mkConstant irName levels)
+                                                 (map Local paramLocals))
+                                   (map Local nonrecArgs))
+                                  (map Local recArgs) in
+                   mkApp minorPremiseType0 introApp
+              else minorPremiseType0
+          inductiveArgs <- constructInductiveArgs recArgs [0..]
+          minorPremiseName <- mkFreshName
+          let minorPremiseType2 = abstractPiSeq nonrecArgs
+                                  (abstractPiSeq recArgs
+                                   (abstractPiSeq indArgs minorPremiseType1))
+          let minorPremise = mkLocalData minorPremiseName (mkName ["e"]) minorPremiseType2
+          addIndElimInfo . elimInfoMinorPremises %= (++ [minorPremise])
+
+    splitIntroRuleType :: Name -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
+    splitIntroRuleType irName irType = splitIntroRuleCore [] [] irName irType 0
+
+    splitIntroRuleTypeCore :: [LocalData] -> [LocalData] -> Name -> Expr -> AddInductiveMethod ([LocalData], [LocalData])
+    splitIntroRuleType nonRecArgs recArgs irName irType paramNum =
+        do
+          numParams <- use (addIndIDecl . indDeclNumParams)
+          paramLocal <- uses addIndParamLocals (!! paramNum)
+          case irType of
+            Pi pi | paramNum < numParams -> splitIntroRuleTypeCore nonRecArgs recArgs irName (instantiate (bindingBody pi) (Local paramLocal)) (paramNum+1)
+                  | otherwise ->
+                      do
+                        -- intro rule has an argument, so we set KTarget to False
+                        addIndKTarget .= False
+                        local <- mkLocalFor pi
+                        argIsRec <- isRecArg (bindingDomain pi)
+                        let (newNonRecArgs, newRecArgs) = if argIsRec then (nonRecArgs, recArgs ++ [local]) else (nonRecArgs ++ [local], recArgs)
+                        splitIntroRuleTypeCore newNonRecArgs newRecArgs irName (instantiate (bindingBody pi) (Local local)) (paramNum+1)
+            _ -> return (nonRecArgs, recArgs)
+
+    constructInductiveArgs :: [LocalData] -> [Int] -> AddInductiveMethod [LocalData]
+    constructInductiveArgs [] _ = return []
+    constructInductiveArgs (recArg : recArgs) (recArgNum : recArgNums) =
+        do
+          restIndArgs <- constructInductiveArgs recArgs recArgNums
+          recArgType <- whnf . localType recArg
+          (xs, recArgTypeBody) <- constructIndArgArgs recArgType
+          recArgTypeBody <- whnf recArgTypeBody
+          c <- uses addIndElimInfo (view elimInfoC . Maybe.fromJust)
+          indexLocals <- use addIndIndexLocals
+          let cApp0 = mkAppSeq (Local c) indexLocals
+          depElim <- use addIndDepElim
+          let cApp1 = if depElim
+                      then mkApp cApp0 (mkAppSeq (Local recArg) (map Local xs))
+                      else cApp0
+          let indArgType = abstractPiSeq xs cApp1
+          indArgName <- mkFreshName
+          let indArg = mkLocalData indArgName (nameRConsI (mkName ["v"]) recArgNum) indArgType
+          return $ indArg : restIndArgs
+
+    constructIndArgArgs :: Expr -> AddInductiveMethod ([LocalData], Expr)
+    constructIndArgArgs recArgType = constructIndArgArgsCore [] recArgType
+
+    constructIndArgArgsCore :: [LocalData] -> Expr -> AddInductiveMethod ([LocalData], Expr)
+    constructIndArgArgsCore xs recArgType =
+        case recArgType of
+          Pi pi -> do local <- mkLocalFor pi
+                      constructIndArgArgsCore (xs ++ [local]) (instantiate (bindingBody pi) (Local local))
+          _ -> return (xs, recArgType)
 
 
-populate_minor_premises :: IndDecl -> Integer -> AddInductiveMethod ()
-populate_minor_premises (IndDecl name ty intro_rules) d_idx = do
-  env <- gets m_env
-  it_level <- liftM (flip genericIndex d_idx . m_it_levels) get
-  -- A declaration is target for K-like reduction when it has one intro,
-  -- the intro has 0 arguments, proof irrelevance is enabled, and it is a proposition.
-  modify (\ind_data -> ind_data { m_K_target = is_prop_proof_irrel env && is_zero it_level && length intro_rules == 1 })
-  -- In the populate_minor_premises_intro_rule we check if the intro rule has 0 arguments.
-  mapM_ (populate_minor_premises_ir d_idx) intro_rules
-
-build_ir_args rec_args nonrec_args ir_name ir_type paramNum = do
-  num_params <- gets m_num_params
-  param_const <- liftM (flip genericIndex paramNum . m_param_consts) get
-  case ir_type of
-    Pi pi | paramNum < num_params -> build_ir_args rec_args nonrec_args ir_name (instantiate (bindingBody pi) (Local param_const)) (paramNum+1)
-          | otherwise -> do
-      -- intro rule has an argument
-      modify (\ind_data -> ind_data { m_K_target = False })
-      local <- mk_local_for pi
-      is_rec_arg <- is_rec_argument (bindingDomain pi)
-      if is_rec_arg
-        then build_ir_args (rec_args ++ [local]) nonrec_args ir_name (instantiate (bindingBody pi) (Local local)) (paramNum+1)
-        else build_ir_args rec_args (nonrec_args ++ [local]) ir_name (instantiate (bindingBody pi) (Local local)) (paramNum+1)
-    _ -> return (rec_args,nonrec_args,ir_type)
-
-populate_minor_premises_ir d_idx (IntroRule ir_name ir_type) = do
-  (rec_args,nonrec_args,ir_type) <- build_ir_args [] [] ir_name ir_type 0
-  ir_type <- whnf ir_type
-  (it_idx,it_indices) <- get_I_indices ir_type
-  elim_infos <- gets m_elim_infos
-  c_app <- return $ mk_app_seq (Local . m_C $ genericIndex elim_infos it_idx) it_indices
-  dep_elim <- gets m_dep_elim
-  levels <- gets m_levels
-  param_consts <- gets m_param_consts
-  c_app <- return $ if dep_elim then
-                      let intro_app = mk_app_seq
-                                      (mk_app_seq
-                                       (mk_app_seq (mk_constant ir_name levels) (map Local param_consts))
-                                       (map Local nonrec_args))
-                                      (map Local rec_args) in
-                      mk_app c_app intro_app
-                    else c_app
-  -- populate ind_args given rec_args
-  -- we have one ind_arg for each rec_arg
-  -- whenever we take an argument of the form (Pi other_type ind_type), we get to assume `C` holds for every possible output
-  ind_args <- build_ind_args (zip rec_args [0..])
-  fresh_name_minor <- mk_fresh_name
-  minor_ty <- return $ abstract_pi_seq nonrec_args
-              (abstract_pi_seq rec_args
-               (abstract_pi_seq ind_args c_app))
-  minor_premise <- return $ mk_local_data fresh_name_minor (name_append_i (mk_name ["e"]) d_idx) minor_ty
-  push_minor_premise d_idx minor_premise
-
-build_xs rec_arg_ty xs =
-  case rec_arg_ty of
-    Pi pi -> mk_local_for pi >>= (\x -> build_xs (instantiate (bindingBody pi) (Local x)) (xs ++ [x]))
-    _ -> return (xs,rec_arg_ty)
-
-build_ind_args [] = return []
-build_ind_args ((rec_arg,rec_arg_num):rest) = do
-  rest_ind_args <- build_ind_args rest
-  rec_arg_ty <- whnf (local_type rec_arg)
-  (xs,rec_arg_ty) <- build_xs rec_arg_ty []
-  rec_arg_ty <- whnf rec_arg_ty
-  (it_idx,it_indices) <- get_I_indices rec_arg_ty
-  c <- liftM (m_C . (flip genericIndex it_idx) . m_elim_infos) get
-  c_app <- return $ mk_app_seq (Local c) it_indices
-  dep_elim <- gets m_dep_elim
-  c_app <- return $ if dep_elim then mk_app c_app (mk_app_seq (Local rec_arg) (map Local xs)) else c_app
-  ind_arg_ty <- return $ abstract_pi_seq xs c_app
-  fresh_name_ind_arg <- mk_fresh_name
-  ind_arg <- return $ mk_local_data fresh_name_ind_arg (name_append_i (mk_name ["v"]) rec_arg_num) ind_arg_ty
-  return $ ind_arg:rest_ind_args
-
-{- Given t of the form (I As is) where I is one of the inductive datatypes being defined,
-   As are the global parameters, and `is` the actual indices provided to it.
-   Return the index of I, and store is in the argument \c indices. -}
-get_I_indices rec_arg_ty = do
-  maybe_it_idx <- get_valid_it_app_idx rec_arg_ty
-  num_params <- gets m_num_params
-  case maybe_it_idx of
-    Just d_idx -> return (d_idx,genericDrop num_params (get_app_args rec_arg_ty))
-
+{-
 declare_elim_rule (IndDecl name ty intro_rules) d_idx = do
   elim_info <- liftM (flip genericIndex d_idx . m_elim_infos) get
   c_app <- return $ mk_app_seq (Local $ m_C elim_info) (map Local $ m_indices elim_info)
