@@ -139,7 +139,6 @@ envAddGlobalLevel :: Name -> Env -> Env
 envAddGlobalLevel name env = case envHasGlobalLevel name env of
                               False -> over envGlobalNames (Set.insert name) env
 
-
 envAddIndDecl :: IndDecl -> Env -> Env
 envAddIndDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (view indDeclName idecl) idecl
 

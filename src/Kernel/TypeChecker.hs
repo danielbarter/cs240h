@@ -10,6 +10,7 @@ API for type checker
 module Kernel.TypeChecker (
   IndDecl(IndDecl), indDeclNumParams, indDeclLPNames, indDeclName, indDeclType, indDeclIntroRules
   , IntroRule(IntroRule)
+  , CompRule(CompRule)
   , Env
   , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
   , envLookupDecl
@@ -18,6 +19,6 @@ module Kernel.TypeChecker (
   , TypeError, TCMethod
   , ensureSort, ensureType
   , tcEval, tcRun
-  , check, whnf, isDefEq
+  , check, whnf, isDefEq, inferType
   ) where
 import Kernel.TypeChecker.Internal
