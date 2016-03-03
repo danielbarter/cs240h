@@ -55,6 +55,9 @@ parseInteger = liftM read (many1 digit)
 parseInt :: ParserMethod Int
 parseInt = liftM read (many1 digit)
 
+assertUndefined :: Integer -> IdxType -> Map Integer a -> ExceptT ExportError (S.State Context) ()
+assertUndefined idx idxType m = if Map.member idx m then throwE (RepeatedIdx idxType) else return ()
+
 parseExportFile :: ParserMethod ()
 parseExportFile = liftM mconcat (sepBy parseStatement newline)
   where
@@ -142,20 +145,74 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         return $ IntroRule irName irType
 
     parseValue :: ParserMethod ()
-    parseValue = try parseN <|> try parseU <|> try parseE <|> try parseB
+    parseValue = try parseN <|> try parseU <|> try parseE
+
     parseN = try parseNI <|> parseNS
     parseU = try parseUS <|> try parseUM <|> try parseUIM <|> try parseUP <|> try parseUG
     parseE = try parseEV <|> try parseES <|> try parseEC <|> try parseEA <|> try parseEL <|> try parseEP
-    parseB = try parseBD <|> try parseBI <|> try parseBS <|> try parseBC
 
-    parseNI = return ()
-    parseNS = return ()
+    parseNI = do
+      string "#NI" >> blank
+      newIdx <- parseInteger <* blank
+      oldIdx <- parseInteger <* blank
+      i <- parseInteger <* newline
+      lift $ do
+        use ctxNameMap >>= assertUndefined newIdx IdxName
+        ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsI (m Map.! oldIdx) i) m))
 
-    parseUS = return ()
-    parseUM = return ()
-    parseUIM = return ()
-    parseUP = return ()
-    parseUG = return ()
+    parseNS = do
+      string "#NS" >> blank
+      newIdx <- parseInteger <* blank
+      oldIdx <- parseInteger <* blank
+      s <- many alphaNum <* newline
+      lift $ do
+        use ctxNameMap >>= assertUndefined newIdx IdxName
+        ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsS (m Map.! oldIdx) s) m))
+
+    parseUS = do
+      string "#US" >> blank
+      newIdx <- parseInteger <* blank
+      oldIdx <- parseInteger <* blank
+      s <- many alphaNum <* newline
+      lift $ do
+        use ctxLevelMap >>= assertUndefined newIdx IdxLevel
+        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkSucc (m Map.! oldIdx)) m))
+
+    parseUM = do
+      string "#UM" >> blank
+      newIdx <- parseInteger <* blank
+      lhsIdx <- parseInteger <* blank
+      rhsIdx <- parseInteger <* newline
+      lift $ do
+        use ctxLevelMap >>= assertUndefined newIdx IdxLevel
+        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkMax (m Map.! lhsIdx) (m Map.! rhsIdx)) m))
+
+    parseUIM = do
+      string "#UIM" >> blank
+      newIdx <- parseInteger <* blank
+      lhsIdx <- parseInteger <* blank
+      rhsIdx <- parseInteger <* newline
+      lift $ do
+        use ctxLevelMap >>= assertUndefined newIdx IdxLevel
+        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkIMax (m Map.! lhsIdx) (m Map.! rhsIdx)) m))
+
+    parseUP = do
+      string "#UP" >> blank
+      newIdx <- parseInteger <* blank
+      nameIdx <- parseInteger <* newline
+      lift $ do
+        use ctxLevelMap >>= assertUndefined newIdx IdxLevel
+        name <- uses ctxNameMap (Map.! nameIdx)
+        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkLevelParam name) m))
+
+    parseUG = do
+      string "#UG" >> blank
+      newIdx <- parseInteger <* blank
+      nameIdx <- parseInteger <* newline
+      lift $ do
+        use ctxLevelMap >>= assertUndefined newIdx IdxLevel
+        name <- uses ctxNameMap (Map.! nameIdx)
+        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkGlobalLevel name) m))
 
     parseEV = return ()
     parseES = return ()
@@ -164,10 +221,12 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
     parseEL = return ()
     parseEP = return ()
 
-    parseBD = return ()
-    parseBI = return ()
-    parseBS = return ()
-    parseBC = return ()
+    parseB :: ParserMethod BinderInfo
+    parseB = try parseBD <|> try parseBI <|> try parseBS <|> try parseBC
+    parseBD = string "#BD" >> return BinderDefault
+    parseBI = string "#BI" >> return BinderImplicit
+    parseBS = string "#BS" >> return BinderStrict
+    parseBC = string "#BC" >> return BinderClass
 
               {-
     parseValueCore :: Int -> ParserMethod ()
