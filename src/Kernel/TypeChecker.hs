@@ -15,6 +15,7 @@ module Kernel.TypeChecker (
   , Env
   , mkStdEnv
   , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
+  , envHasGlobalLevel, envAddGlobalLevel
   , envLookupDecl
   , envAddAxiom, envAddDefinition
   , envPropProofIrrel, envPropImpredicative
