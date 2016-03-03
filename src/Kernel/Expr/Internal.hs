@@ -48,7 +48,20 @@ data Expr = Var VarData
                 | Lambda BindingData
                 | Pi BindingData
                 | App AppData
-                deriving (Eq,Show,Ord)
+                deriving (Eq,Ord)
+
+{- TODO(dhs): replace with pretty-printer -}
+showExpression :: Expr -> String
+showExpression e = case e of
+  Var var -> "#" ++ show (varIdx var)
+  Local local -> "(Local: " ++ show (localPPName local) ++ " : " ++ show (localType local) ++ ")"
+  Sort sort -> "Type"--"(Sort: " ++ show (sortLevel sort) ++ ")"
+  Constant const -> "'" ++ show (constName const) ++ " " ++ show (constLevels const) ++ "'"
+  Lambda lam -> "(Lambda: " ++ show (bindingDomain lam) ++ " ==> " ++ show (bindingBody lam) ++ ")"
+  Pi pi -> "(Pi: " ++ show (bindingDomain pi) ++ " -> " ++ show (bindingBody pi) ++ ")"
+  App app -> let (f,args) = getAppOpArgs e in "(App: " ++ show f ++ " @ " ++ show args ++ ")"
+
+instance Show Expr where show e = showExpression e
 
 {- Free variables -}
 

@@ -48,6 +48,8 @@ import qualified Data.Maybe as Maybe
 
 import Debug.Trace
 
+debug msg = trace msg (return ())
+
 __Just :: Lens (Maybe a) (Maybe b) a b
 __Just = lens Maybe.fromJust (\ma b' -> Just b')
 
@@ -165,7 +167,7 @@ checkIndType = do
   addIndIsDefinitelyNotZero .= isDefinitelyNotZero (sortLevel sort)
   addIndIndConst .= Just (ConstantData name lpNames)
   addIndIndLevel .= Just (sortLevel sort)
-  addIndNumArgs .= Just (length indexLocals)
+  addIndNumArgs .= Just (numParams + length indexLocals)
   addIndParamLocals .= Just paramLocals
   addIndIndexLocals .= Just indexLocals
   addIndIndBody .= Just body
@@ -196,6 +198,7 @@ checkIndType = do
 declareIndType :: AddInductiveMethod ()
 declareIndType = do
   idecl@(IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
+  debug (show ty)
   envAddAxiom name lpNames ty
   addIndEnv %= envAddIndDecl idecl
 
@@ -264,8 +267,6 @@ checkIntroRules = do
                                              Constant const -> constName const == constName indTypeConst
                                              _ -> False) e
 
-
-
 isValidIndApp :: Expr -> AddInductiveMethod Bool
 isValidIndApp e = do
   indTypeConst <- use (addIndIndConst . __Just)
@@ -286,7 +287,8 @@ isRecArg e = do
 declareIntroRules :: AddInductiveMethod ()
 declareIntroRules = do
   (IndDecl _ lpNames indName _ introRules) <- use addIndIDecl
-  mapM_ (\(IntroRule irName irType) -> do envAddAxiom irName lpNames irType
+  mapM_ (\(IntroRule irName irType) -> do debug (show irType)
+                                          envAddAxiom irName lpNames irType
                                           addIndEnv %= envAddIntroRule irName indName) introRules
 
 computeElimRule :: AddInductiveMethod ()
@@ -391,7 +393,7 @@ computeElimRule = do
           levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
           (nonrecArgs, recArgs) <- splitIntroRuleType irType
           c <- use (addIndElimInfo . __Just . elimInfoC)
-          let minorPremiseType0 = mkAppSeq (Local c) (map Local indexLocals)
+          let minorPremiseType0 = mkAppSeq (Local c) (map Local paramLocals)
           let minorPremiseType1 = if depElim
                                   then let introApp = mkAppSeq
                                                       (mkAppSeq
@@ -478,6 +480,9 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
+    debug ("before abstracting: " ++ show elimType5)
+    debug ("locals to abstract: " ++ show (map Local paramLocals))
+    debug ("after abstracting: " ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName lpNames numParams (numParams + 1 + length minorPremises)
                                           (length indexLocals) kTarget depElim
