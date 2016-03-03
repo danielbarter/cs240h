@@ -486,9 +486,9 @@ declareElimRule =
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
     envAddAxiom (getElimName indName) elimLPNames elimType6
-    let tcElimInfo = TypeChecker.ElimInfo indName lpNames numParams (numParams + 1 + length minorPremises)
+    let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim
-    addIndEnv %= envAddElimInfo tcElimInfo
+    addIndEnv %= envAddElimInfo (getElimName indName) tcElimInfo
 
 getElimName :: Name -> Name
 getElimName indName = nameRConsS indName "rec"

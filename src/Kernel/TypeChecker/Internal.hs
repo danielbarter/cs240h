@@ -38,6 +38,11 @@ import Kernel.DeqCache (DeqCache, mkDeqCache)
 
 import qualified Data.Maybe as Maybe
 
+import Debug.Trace
+
+debug msg = trace msg (return ())
+
+
 {- Inductive extension -}
 
 data IntroRule = IntroRule Name Expr deriving (Show)
@@ -145,8 +150,8 @@ envAddIndDecl idecl = over (envIndExt . indExtIndDecls) $ Map.insert (view indDe
 envAddIntroRule :: Name -> Name -> Env -> Env
 envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName) $ Map.insert irName indName
 
-envAddElimInfo :: ElimInfo -> Env -> Env
-envAddElimInfo elimInfo = over (envIndExt . indExtElimInfos) $ Map.insert (elimInfoIndName elimInfo) elimInfo
+envAddElimInfo :: Name -> ElimInfo -> Env -> Env
+envAddElimInfo elimName elimInfo = over (envIndExt . indExtElimInfos) $ Map.insert elimName elimInfo
 
 envAddCompRule :: Name -> CompRule -> Env -> Env
 envAddCompRule irName compRule = over (envIndExt . indExtCompRules) $ Map.insert irName compRule
@@ -607,14 +612,19 @@ inductiveNormExt e = do
   elimOpConst <- liftMaybe . maybeConstant . getOperator $ e
   einfo@(ElimInfo indName lpNames numParams numACe numIndices kTarget depElim) <-
     liftMaybe $ Map.lookup (constName elimOpConst) elimInfos
+  debug ("found ElimInfo for: " ++ show elimOpConst)
   guard $ length (getAppArgs e) >= numACe + numIndices + 1
+  debug "passed: enough arguments"
   let majorIdx = numACe + numIndices
   let major = (getAppArgs e) !! majorIdx
   (introApp,compRule) <- findCompRule einfo elimOpConst major
   let elimArgs = getAppArgs e
   let introArgs = getAppArgs introApp
   guard $ length introArgs == numParams + (compRuleNumArgs compRule)
+  debug "passed: correct number of args in intro rule"
+  debug ("constLevels: " ++ show (constLevels elimOpConst) ++ "  !=  " ++ show (length lpNames))
   guard $ length (constLevels elimOpConst) == length lpNames
+  debug "passed: correct number of levels"
   let rhsArgs = reverse ((take numACe elimArgs) ++ (take (compRuleNumArgs compRule) $ drop numParams introArgs))
   let rhsBody = instantiateLevelParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
   let rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs

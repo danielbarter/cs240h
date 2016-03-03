@@ -63,7 +63,6 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
   where
     parseStatement :: ParserMethod ()
     parseStatement = do
-      trace "parseStatement" (return ())
       try parseDefinition <|> parseValue
 
     parseDefinition :: ParserMethod ()
@@ -104,7 +103,7 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
       string "#AX" >> blank
       nameIdx <- parseInteger <* blank
       lpNameIdxs <- (endBy parseInteger blank) <* string "| "
-      typeIdx <- parseInteger <* blank
+      typeIdx <- parseInteger
       lift $ do
         name <- uses ctxNameMap (Map.! nameIdx)
         lpNames <- uses ctxNameMap (\m -> map (m Map.!) lpNameIdxs)
@@ -149,7 +148,6 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
 
     parseValue :: ParserMethod ()
     parseValue = do
-      trace "parseValue" (return ())
       try parseN <|> try parseU <|> parseE
 
     parseN = try parseNI <|> parseNS
@@ -170,7 +168,6 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
       string "#NS" >> blank
       oldIdx <- parseInteger <* blank
       s <- manyTill anyChar (lookAhead newline)
-      trace ("parseNS: " ++ s) (return ())
       lift $ do
         use ctxNameMap >>= assertUndefined newIdx IdxName
         ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsS (m Map.! oldIdx) s) m))
@@ -178,8 +175,8 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
     parseUS = do
       newIdx <- parseInteger <* blank
       string "#US" >> blank
-      oldIdx <- parseInteger <* blank
-      s <- many alphaNum
+      oldIdx <- parseInteger
+      s <- many (blank *> alphaNum)
       lift $ do
         use ctxLevelMap >>= assertUndefined newIdx IdxLevel
         ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkSucc (m Map.! oldIdx)) m))

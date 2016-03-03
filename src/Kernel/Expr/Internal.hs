@@ -56,7 +56,7 @@ showExpression e = case e of
   Var var -> "#" ++ show (varIdx var)
   Local local -> "(Local: " ++ show (localName local) ++ " [" ++ show (localPPName local) ++ "] : " ++ show (localType local) ++ ")"
   Sort sort -> "Type"--"(Sort: " ++ show (sortLevel sort) ++ ")"
-  Constant const -> "'" ++ show (constName const) ++ " " ++ show (constLevels const) ++ "'"
+  Constant const -> "'" ++ show (constName const) ++ "'"--" " ++ show (constLevels const) ++ "'"
   Lambda lam -> "(Lambda: " ++ show (bindingDomain lam) ++ " ==> " ++ show (bindingBody lam) ++ ")"
   Pi pi -> "(Pi: " ++ show (bindingDomain pi) ++ " -> " ++ show (bindingBody pi) ++ ")"
   App app -> let (f,args) = getAppOpArgs e in "(App: " ++ show f ++ " @ " ++ show args ++ ")"
