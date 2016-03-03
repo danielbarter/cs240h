@@ -485,7 +485,6 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
-    debug ("about to add: " ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName lpNames numParams (numParams + 1 + length minorPremises)
                                           (length indIndexLocals) kTarget depElim
@@ -525,7 +524,7 @@ mkCompRule indName (IntroRule irName irType) minorPremise = do
                  (abstractLambda c
                   (abstractLambdaSeq minorPremises
                    (abstractLambdaSeq nonRecArgs
-                    (abstractLambdaSeq recArgs compRHS1))))
+                    (abstractLambdaSeq recArgs compRHS0))))
   checkType compRHS1 elimLPNames
   addIndEnv %= envAddCompRule irName (CompRule (getElimName indName) (length nonRecArgs + length recArgs) compRHS1)
     where

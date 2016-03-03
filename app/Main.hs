@@ -84,7 +84,7 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
     parseDEF = do
       string "#DEF" >> blank
       nameIdx <- parseInteger <* blank
-      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      lpNameIdxs <- (endBy parseInteger blank) <* string "| "
       typeIdx <- parseInteger <* blank
       valueIdx <- parseInteger
       lift $ do
@@ -103,7 +103,7 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
     parseAX = do
       string "#AX" >> blank
       nameIdx <- parseInteger <* blank
-      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      lpNameIdxs <- (endBy parseInteger blank) <* string "| "
       typeIdx <- parseInteger <* blank
       lift $ do
         name <- uses ctxNameMap (Map.! nameIdx)
@@ -120,7 +120,7 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
     parseIND = do
       string "#IND" >> blank
       numParams <- parseInt <* blank
-      lpNameIdxs <- (endBy parseInteger blank) <* char '|' <* blank
+      lpNameIdxs <- (endBy parseInteger blank) <* string "| "
       indNameIdx <- parseInteger <* blank
       indTypeIdx <- parseInteger <* blank
       numIntroRules <- parseInt
@@ -240,8 +240,8 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
     parseEC = do
       newIdx <- parseInteger <* blank
       string "#EC" >> blank
-      nameIdx <- parseInteger <* blank
-      levelIdxs <- (sepBy parseInteger blank)
+      nameIdx <- parseInteger
+      levelIdxs <- many (blank *> parseInteger)
       lift $ do
         use ctxExprMap >>= assertUndefined newIdx IdxExpr
         name <- uses ctxNameMap (Map.! nameIdx)
