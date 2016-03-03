@@ -156,7 +156,7 @@ replaceInLevel f l =
       case l of
         Zero -> l
         Succ pred -> mkSucc $ replaceInLevel f pred
-        Max args -> Max . Map.fromList $ map (toLevelOffset . replaceInLevel f) $ maxArgsToLevels args
+        Max args -> foldr mkMax mkZero $ map (replaceInLevel f) (maxArgsToLevels args)
         IMax lhs rhs -> mkIMax (replaceInLevel f lhs) (replaceInLevel f rhs)
         LevelParam _ -> l
         GlobalLevel _ -> l
