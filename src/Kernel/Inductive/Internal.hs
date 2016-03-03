@@ -198,7 +198,6 @@ checkIndType = do
 declareIndType :: AddInductiveMethod ()
 declareIndType = do
   idecl@(IndDecl numParams lpNames name ty introRules) <- use addIndIDecl
-  debug (show ty)
   envAddAxiom name lpNames ty
   addIndEnv %= envAddIndDecl idecl
 
@@ -287,8 +286,7 @@ isRecArg e = do
 declareIntroRules :: AddInductiveMethod ()
 declareIntroRules = do
   (IndDecl _ lpNames indName _ introRules) <- use addIndIDecl
-  mapM_ (\(IntroRule irName irType) -> do debug (show irType)
-                                          envAddAxiom irName lpNames irType
+  mapM_ (\(IntroRule irName irType) -> do envAddAxiom irName lpNames irType
                                           addIndEnv %= envAddIntroRule irName indName) introRules
 
 computeElimRule :: AddInductiveMethod ()
@@ -480,9 +478,7 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
-    debug ("before abstracting: " ++ show elimType5)
-    debug ("locals to abstract: " ++ show (map Local paramLocals))
-    debug ("after abstracting: " ++ show elimType6)
+    debug ("about to add: " ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName lpNames numParams (numParams + 1 + length minorPremises)
                                           (length indexLocals) kTarget depElim
