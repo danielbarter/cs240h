@@ -54,7 +54,7 @@ data Expr = Var VarData
 showExpression :: Expr -> String
 showExpression e = case e of
   Var var -> "#" ++ show (varIdx var)
-  Local local -> "(Local: " ++ show (localPPName local) ++ " : " ++ show (localType local) ++ ")"
+  Local local -> "(Local: " ++ show (localName local) ++ " [" ++ show (localPPName local) ++ "] : " ++ show (localType local) ++ ")"
   Sort sort -> "Type"--"(Sort: " ++ show (sortLevel sort) ++ ")"
   Constant const -> "'" ++ show (constName const) ++ " " ++ show (constLevels const) ++ "'"
   Lambda lam -> "(Lambda: " ++ show (bindingDomain lam) ++ " ==> " ++ show (bindingBody lam) ++ ")"

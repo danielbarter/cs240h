@@ -384,14 +384,20 @@ computeElimRule = do
     initMinorPremise (IntroRule irName irType) =
         do
           paramLocals <- use $ addIndParamLocals . __Just
-          indexLocals <- use $ addIndIndexLocals . __Just
           elimInfo <- use $ addIndElimInfo . __Just
           depElim <- use addIndDepElim
           indLevel <- use $ addIndIndLevel . __Just
           levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
           (nonrecArgs, recArgs) <- splitIntroRuleType irType
           c <- use (addIndElimInfo . __Just . elimInfoC)
-          let minorPremiseType0 = mkAppSeq (Local c) (map Local paramLocals)
+          -- TODO(dhs): current spot, need the body after constructing the indArgs
+          indArgs <- constructIndArgs recArgs [0..]
+          minorPremiseName <- mkFreshName
+
+          minorIndices <- getIndices irType
+          debug (show irType ++ " ==> " ++ show minorIndices)
+
+          let minorPremiseType0 = mkAppSeq (Local c) minorIndices
           let minorPremiseType1 = if depElim
                                   then let introApp = mkAppSeq
                                                       (mkAppSeq
@@ -401,8 +407,6 @@ computeElimRule = do
                                                       (map Local recArgs) in
                                        mkApp minorPremiseType0 introApp
                                   else minorPremiseType0
-          indArgs <- constructIndArgs recArgs [0..]
-          minorPremiseName <- mkFreshName
           let minorPremiseType2 = abstractPiSeq nonrecArgs
                                   (abstractPiSeq recArgs
                                    (abstractPiSeq indArgs minorPremiseType1))
@@ -457,6 +461,9 @@ constructIndArgArgs recArgType = constructIndArgArgsCore [] recArgType
             Pi pi -> do local <- mkLocalFor pi
                         constructIndArgArgsCore (xs ++ [local]) (instantiate (bindingBody pi) (Local local))
             _ -> return xs
+
+getIndices :: Expr -> AddInductiveMethod [Expr]
+getIndices e = use (addIndIDecl . indDeclNumParams) >>= return . flip drop (getAppArgs e)
 
 declareElimRule :: AddInductiveMethod ()
 declareElimRule =
