@@ -152,8 +152,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
     parseE = try parseEV <|> try parseES <|> try parseEC <|> try parseEA <|> try parseEL <|> try parseEP
 
     parseNI = do
-      string "#NI" >> blank
       newIdx <- parseInteger <* blank
+      string "#NI" >> blank
       oldIdx <- parseInteger <* blank
       i <- parseInteger <* newline
       lift $ do
@@ -161,8 +161,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsI (m Map.! oldIdx) i) m))
 
     parseNS = do
-      string "#NS" >> blank
       newIdx <- parseInteger <* blank
+      string "#NS" >> blank
       oldIdx <- parseInteger <* blank
       s <- many alphaNum <* newline
       lift $ do
@@ -170,8 +170,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsS (m Map.! oldIdx) s) m))
 
     parseUS = do
-      string "#US" >> blank
       newIdx <- parseInteger <* blank
+      string "#US" >> blank
       oldIdx <- parseInteger <* blank
       s <- many alphaNum <* newline
       lift $ do
@@ -179,8 +179,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkSucc (m Map.! oldIdx)) m))
 
     parseUM = do
-      string "#UM" >> blank
       newIdx <- parseInteger <* blank
+      string "#UM" >> blank
       lhsIdx <- parseInteger <* blank
       rhsIdx <- parseInteger <* newline
       lift $ do
@@ -188,8 +188,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkMax (m Map.! lhsIdx) (m Map.! rhsIdx)) m))
 
     parseUIM = do
-      string "#UIM" >> blank
       newIdx <- parseInteger <* blank
+      string "#UIM" >> blank
       lhsIdx <- parseInteger <* blank
       rhsIdx <- parseInteger <* newline
       lift $ do
@@ -197,8 +197,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkIMax (m Map.! lhsIdx) (m Map.! rhsIdx)) m))
 
     parseUP = do
-      string "#UP" >> blank
       newIdx <- parseInteger <* blank
+      string "#UP" >> blank
       nameIdx <- parseInteger <* newline
       lift $ do
         use ctxLevelMap >>= assertUndefined newIdx IdxLevel
@@ -206,8 +206,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxLevelMap %= Map.insert newIdx (mkLevelParam name)
 
     parseUG = do
-      string "#UG" >> blank
       newIdx <- parseInteger <* blank
+      string "#UG" >> blank
       nameIdx <- parseInteger <* newline
       lift $ do
         use ctxLevelMap >>= assertUndefined newIdx IdxLevel
@@ -215,16 +215,16 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxLevelMap %= Map.insert newIdx (mkGlobalLevel name)
 
     parseEV = do
-      string "#EV" >> blank
       newIdx <- parseInteger <* blank
+      string "#EV" >> blank
       varIdx <- parseInt <* newline
       lift $ do
         use ctxExprMap >>= assertUndefined newIdx IdxExpr
         ctxExprMap %= Map.insert newIdx (mkVar varIdx)
 
     parseES = do
-      string "#ES" >> blank
       newIdx <- parseInteger <* blank
+      string "#ES" >> blank
       levelIdx <- parseInteger <* newline
       lift $ do
         use ctxExprMap >>= assertUndefined newIdx IdxExpr
@@ -232,8 +232,8 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxExprMap %= Map.insert newIdx (mkSort level)
 
     parseEC = do
-      string "#EC" >> blank
       newIdx <- parseInteger <* blank
+      string "#EC" >> blank
       nameIdx <- parseInteger <* blank
       levelIdxs <- (sepBy parseInteger blank) <* newline
       lift $ do
@@ -243,16 +243,41 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
         ctxExprMap %= Map.insert newIdx (mkConstant name levels)
 
     parseEA = do
-      string "#EA" >> blank
       newIdx <- parseInteger <* blank
+      string "#EA" >> blank
       fnIdx <- parseInteger <* blank
       argIdx <- parseInteger <* newline
       lift $ do
         use ctxExprMap >>= assertUndefined newIdx IdxExpr
         ctxExprMap <~ (uses ctxExprMap (\m -> Map.insert newIdx (mkApp (m Map.! fnIdx) (m Map.! argIdx)) m))
 
-    parseEL = return ()
-    parseEP = return ()
+    parseEL = do
+      binderInfo <- parseB <* blank
+      string "#EL" >> blank
+      newIdx <- parseInteger <* blank
+      nameIdx <- parseInteger <* blank
+      domainIdx <- parseInteger <* blank
+      bodyIdx <- parseInteger <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        name <- uses ctxNameMap (Map.! nameIdx)
+        domain <- uses ctxExprMap (Map.! domainIdx)
+        body <- uses ctxExprMap (Map.! bodyIdx)
+        ctxExprMap %= Map.insert newIdx (mkLambda name domain body binderInfo)
+
+    parseEP = do
+      binderInfo <- parseB <* blank
+      string "#EP" >> blank
+      newIdx <- parseInteger <* blank
+      nameIdx <- parseInteger <* blank
+      domainIdx <- parseInteger <* blank
+      bodyIdx <- parseInteger <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        name <- uses ctxNameMap (Map.! nameIdx)
+        domain <- uses ctxExprMap (Map.! domainIdx)
+        body <- uses ctxExprMap (Map.! bodyIdx)
+        ctxExprMap %= Map.insert newIdx (mkPi name domain body binderInfo)
 
     parseB :: ParserMethod BinderInfo
     parseB = try parseBD <|> try parseBI <|> try parseBS <|> try parseBC
