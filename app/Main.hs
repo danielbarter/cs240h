@@ -203,7 +203,7 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
       lift $ do
         use ctxLevelMap >>= assertUndefined newIdx IdxLevel
         name <- uses ctxNameMap (Map.! nameIdx)
-        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkLevelParam name) m))
+        ctxLevelMap %= Map.insert newIdx (mkLevelParam name)
 
     parseUG = do
       string "#UG" >> blank
@@ -212,12 +212,45 @@ parseExportFile = liftM mconcat (sepBy parseStatement newline)
       lift $ do
         use ctxLevelMap >>= assertUndefined newIdx IdxLevel
         name <- uses ctxNameMap (Map.! nameIdx)
-        ctxLevelMap <~ (uses ctxLevelMap (\m -> Map.insert newIdx (mkGlobalLevel name) m))
+        ctxLevelMap %= Map.insert newIdx (mkGlobalLevel name)
 
-    parseEV = return ()
-    parseES = return ()
-    parseEC = return ()
-    parseEA = return ()
+    parseEV = do
+      string "#EV" >> blank
+      newIdx <- parseInteger <* blank
+      varIdx <- parseInt <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        ctxExprMap %= Map.insert newIdx (mkVar varIdx)
+
+    parseES = do
+      string "#ES" >> blank
+      newIdx <- parseInteger <* blank
+      levelIdx <- parseInteger <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        level <- uses ctxLevelMap (Map.! levelIdx)
+        ctxExprMap %= Map.insert newIdx (mkSort level)
+
+    parseEC = do
+      string "#EC" >> blank
+      newIdx <- parseInteger <* blank
+      nameIdx <- parseInteger <* blank
+      levelIdxs <- (sepBy parseInteger blank) <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        name <- uses ctxNameMap (Map.! nameIdx)
+        levels <- uses ctxLevelMap (\m -> map (m Map.!) levelIdxs)
+        ctxExprMap %= Map.insert newIdx (mkConstant name levels)
+
+    parseEA = do
+      string "#EA" >> blank
+      newIdx <- parseInteger <* blank
+      fnIdx <- parseInteger <* blank
+      argIdx <- parseInteger <* newline
+      lift $ do
+        use ctxExprMap >>= assertUndefined newIdx IdxExpr
+        ctxExprMap <~ (uses ctxExprMap (\m -> Map.insert newIdx (mkApp (m Map.! fnIdx) (m Map.! argIdx)) m))
+
     parseEL = return ()
     parseEP = return ()
 
