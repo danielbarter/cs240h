@@ -47,21 +47,27 @@ blank = char ' '
 
 mkContext = Context (Map.insert 0 noName Map.empty) (Map.insert 0 mkZero Map.empty) Map.empty mkStdEnv 0 0
 
-type ParserMethod = ParsecT String () (ExceptT ExportError (State Context))
+type ParserMethod = ParsecT String () (ExceptT ExportError (S.State Context))
+
+parseInteger :: ParserMethod Integer
+parseInteger = liftM read (many1 digit)
+
+parseInt :: ParserMethod Int
+parseInt = liftM read (many1 digit)
 
 parseExportFile :: ParserMethod ()
-parseExportFile = sepBy parseStatement newline
+parseExportFile = liftM mconcat (sepBy parseStatement newline)
   where
     parseStatement :: ParserMethod ()
-    parseStatement = (char '#' *> parseDefinition) <|> ((parseInt <* blank) >>= parseValue)
+    parseStatement = try parseDefinition <|> try parseValue
 
     parseDefinition :: ParserMethod ()
-    parseDefinition = parseUNI <|> parseDEF <|> parseAX <|> parseIND
+    parseDefinition = try parseUNI <|> try parseDEF <|> try parseAX <|> try parseIND
 
     parseUNI :: ParserMethod ()
     parseUNI = do
-      string "UNI" >> blank
-      nameIdx <- parseInt
+      string "#UNI" >> blank
+      nameIdx <- parseInteger
       lift $ do
         name <- uses ctxNameMap (Map.! nameIdx)
         alreadyPresent <- uses ctxEnv (envHasGlobalLevel name)
@@ -71,14 +77,14 @@ parseExportFile = sepBy parseStatement newline
 
     parseDEF :: ParserMethod ()
     parseDEF = do
-      string "DEF" >> blank
-      nameIdx <- parseInt <* blank
-      lpNameIdxs <- (sepBy parseInt blank) <* char "|"
-      typeIdx <- parseInt <* blank
-      valueIdx <- parseInt
+      string "#DEF" >> blank
+      nameIdx <- parseInteger <* blank
+      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      typeIdx <- parseInteger <* blank
+      valueIdx <- parseInteger
       lift $ do
         name <- uses ctxNameMap (Map.! nameIdx)
-        lpNames <- uses ctxLevelMap (\m -> map (m Map.!) lpNameIdxs)
+        lpNames <- uses ctxNameMap (\m -> map (m Map.!) lpNameIdxs)
         ty <- uses ctxExprMap (Map.! typeIdx)
         val <- uses ctxExprMap (Map.! valueIdx)
         ctxDefId += 1
@@ -87,6 +93,97 @@ parseExportFile = sepBy parseStatement newline
         case envAddDefinition name lpNames ty val env of
           Left err -> throwE $ TError err
           Right env -> ctxEnv .= env
+
+    parseAX :: ParserMethod ()
+    parseAX = do
+      string "#AX" >> blank
+      nameIdx <- parseInteger <* blank
+      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      typeIdx <- parseInteger <* blank
+      lift $ do
+        name <- uses ctxNameMap (Map.! nameIdx)
+        lpNames <- uses ctxNameMap (\m -> map (m Map.!) lpNameIdxs)
+        ty <- uses ctxExprMap (Map.! typeIdx)
+        ctxDefId += 1
+        use ctxDefId >>= (\did -> trace ("AX(" ++ show did ++ "): " ++ show name) (return ()))
+        env <- use ctxEnv
+        case envAddAxiom name lpNames ty env of
+          Left err -> throwE $ TError err
+          Right env -> ctxEnv .= env
+
+    parseIND :: ParserMethod ()
+    parseIND = do
+      string "#IND" >> blank
+      indNameIdx <- parseInteger <* blank
+      numParams <- parseInt <* blank
+      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      indTypeIdx <- parseInteger <* blank
+      numIntroRules <- parseInt <* newline
+      introRules <- count numIntroRules parseIntroRule
+      lift $ do
+        indName <- uses ctxNameMap (Map.! indNameIdx)
+        lpNames <- uses ctxNameMap (\m -> map (m Map.!) lpNameIdxs)
+        indType <- uses ctxExprMap (Map.! indTypeIdx)
+        ctxIndId += 1
+        use ctxIndId >>= (\did -> trace ("Ind(" ++ show did ++ "): " ++ show indName) (return ()))
+        env <- use ctxEnv
+        case addInductive env (IndDecl numParams lpNames indName indType introRules) of
+          Left err -> throwE $ IDeclError err
+          Right env -> ctxEnv .= env
+
+    parseIntroRule :: ParserMethod IntroRule
+    parseIntroRule = do
+      string "#INTRO" >> blank
+      irNameIdx <- parseInteger <* blank
+      irTypeIdx <- parseInteger <* newline
+      lift $ do
+        irName <- uses ctxNameMap (Map.! irNameIdx)
+        irType <- uses ctxExprMap (Map.! irTypeIdx)
+        return $ IntroRule irName irType
+
+    parseValue :: ParserMethod ()
+    parseValue = try parseN <|> try parseU <|> try parseE <|> try parseB
+    parseN = try parseNI <|> parseNS
+    parseU = try parseUS <|> try parseUM <|> try parseUIM <|> try parseUP <|> try parseUG
+    parseE = try parseEV <|> try parseES <|> try parseEC <|> try parseEA <|> try parseEL <|> try parseEP
+    parseB = try parseBD <|> try parseBI <|> try parseBS <|> try parseBC
+
+    parseNI = return ()
+    parseNS = return ()
+
+    parseUS = return ()
+    parseUM = return ()
+    parseUIM = return ()
+    parseUP = return ()
+    parseUG = return ()
+
+    parseEV = return ()
+    parseES = return ()
+    parseEC = return ()
+    parseEA = return ()
+    parseEL = return ()
+    parseEP = return ()
+
+    parseBD = return ()
+    parseBI = return ()
+    parseBS = return ()
+    parseBC = return ()
+
+              {-
+    parseValueCore :: Int -> ParserMethod ()
+    parseValueCore n = parseN n <|> parseU n <|> parseE n <|> parseB n
+    parseN n = char 'N' *> (parseNI n <|> parseNS n)
+    parseU n = char 'U' *> (parseUS n <|> parseUM <|> parseUIM <|> parseUP <|> parseUG)
+    parseE = char 'E' *> (parseEV <|> parseES <|> parseEC <|> parseEA <|> parseEL <|> parseEP)
+    parseB = char 'B' *> (parseBD <|> parseBI <|> parseBS <|> parseBC)
+
+    parseNI new_idx = do
+      old_idx <- string "I " *> parseInteger
+      i <- blank *> parseInteger
+      return $ do
+        m <- use ctxNameMap
+        assertUndefined new_idx m RepeatedName
+        ctxNameMap %= Map.insert new_idx (nameRConsI (m Map.! old_idx) i)
 
 {-
 
@@ -198,3 +295,7 @@ main = someFunc
 -}
 -}
 -}
+-}
+
+main :: IO ()
+main = putStrLn "Hello World!"
