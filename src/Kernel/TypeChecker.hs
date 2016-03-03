@@ -13,6 +13,7 @@ module Kernel.TypeChecker (
   , CompRule(CompRule)
   , ElimInfo(ElimInfo)
   , Env
+  , mkStdEnv
   , envAddIndDecl, envAddIntroRule, envAddElimInfo, envAddCompRule
   , envLookupDecl
   , envAddAxiom, envAddDefinition

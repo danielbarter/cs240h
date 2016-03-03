@@ -1,7 +1,7 @@
 {-|
 Module      : Kernel.Inductive.Internal
 Description : Inductive type declarations
-Copyright   : (c) Daniel Selsam, 2015
+Copyright   : (c) Daniel Selsam, 2016
 License     : GPL-3
 Maintainer  : daniel.selsam@gmail.com
 
