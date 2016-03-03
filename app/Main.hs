@@ -58,8 +58,8 @@ parseInt = liftM read (many1 digit)
 assertUndefined :: Integer -> IdxType -> Map Integer a -> ExceptT ExportError (S.State Context) ()
 assertUndefined idx idxType m = if Map.member idx m then throwE (RepeatedIdx idxType) else return ()
 
-parseExportFile :: ParserMethod [()]
-parseExportFile = sepEndBy1 parseStatement newline
+parseExportFile :: ParserMethod ()
+parseExportFile = sepEndBy1 parseStatement newline >> eof
   where
     parseStatement :: ParserMethod ()
     parseStatement = do
@@ -119,9 +119,9 @@ parseExportFile = sepEndBy1 parseStatement newline
     parseIND :: ParserMethod ()
     parseIND = do
       string "#IND" >> blank
-      indNameIdx <- parseInteger <* blank
       numParams <- parseInt <* blank
-      lpNameIdxs <- (sepBy parseInteger blank) <* char '|'
+      lpNameIdxs <- (endBy parseInteger blank) <* char '|' <* blank
+      indNameIdx <- parseInteger <* blank
       indTypeIdx <- parseInteger <* blank
       numIntroRules <- parseInt
       introRules <- count numIntroRules parseIntroRule
@@ -169,8 +169,8 @@ parseExportFile = sepEndBy1 parseStatement newline
       newIdx <- parseInteger <* blank
       string "#NS" >> blank
       oldIdx <- parseInteger <* blank
-      s <- many alphaNum
-      trace "parseNS" (return ())
+      s <- manyTill anyChar (lookAhead newline)
+      trace ("parseNS: " ++ s) (return ())
       lift $ do
         use ctxNameMap >>= assertUndefined newIdx IdxName
         ctxNameMap <~ (uses ctxNameMap (\m -> Map.insert newIdx (nameRConsS (m Map.! oldIdx) s) m))
@@ -305,4 +305,4 @@ main = do
       case S.evalState (runExceptT (runParserT parseExportFile () filename fileContents)) mkContext of
         Left err -> print err
         Right (Left err) -> print err
-        Right (Right [()]) -> print "Congratulations!"
+        Right (Right _) -> print "Congratulations!"
