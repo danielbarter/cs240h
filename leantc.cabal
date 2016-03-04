@@ -22,7 +22,7 @@ library
                      , disjoint-set >= 0.2
                      , transformers
   default-language:    Haskell2010
-  ghc-options:
+  ghc-options:         -O2
 
 executable leantc-exe
   hs-source-dirs:      app

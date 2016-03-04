@@ -486,6 +486,7 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
+    debug ("elimRuleType:\n\n" ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim
