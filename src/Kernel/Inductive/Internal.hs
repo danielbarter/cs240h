@@ -464,7 +464,10 @@ constructIndArgArgs recArgType = constructIndArgArgsCore [] recArgType
             _ -> return (xs, recArgType)
 
 getIndices :: Expr -> AddInductiveMethod [Expr]
-getIndices e = use (addIndIDecl . indDeclNumParams) >>= return . flip drop (getAppArgs e)
+getIndices e = do
+  e_n <- whnf e
+  numParams <- use (addIndIDecl . indDeclNumParams)
+  return $ drop numParams (getAppArgs e_n)
 
 declareElimRule :: AddInductiveMethod ()
 declareElimRule =
