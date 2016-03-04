@@ -42,20 +42,34 @@ Max invariants:
 1. the keys of the Max have unique base levels
 2. there are at least two keys
 3. the constructors of the keys are different from Max and Succ
-4. if Zero is a key, it maps to k > 0
+4. if Zero is a key, it maps to k > 0, and no other key maps to j >= k
+
+Note: mkMax of a Max and a non-Max might return a non-Max
+Example: mkMax (Max [(0,1), (l,0)]) (l,1) = (l,1)
 -}
 mkMax :: Level -> Level -> Level
-mkMax lhs rhs = mkMaxCore lhs rhs where
-  mkMaxCore (Max args1) (Max args2) = Max $ Map.unionWith max args1 args2
-  mkMaxCore (Max args1) rhs = Max $ uncurry (Map.insertWith max) (toLevelOffset rhs) args1
-  mkMaxCore lhs (Max args2) = Max $ uncurry (Map.insertWith max) (toLevelOffset lhs) args2
-  mkMaxCore Zero rhs = rhs
-  mkMaxCore lhs Zero = lhs
-  mkMaxCore lhs rhs =
-    let (lhs', k1) = toLevelOffset lhs
-        (rhs', k2) = toLevelOffset rhs in
-     if lhs' == rhs' then (if k1 < k2 then lhs else rhs) else
-       Max . Map.fromList $ map toLevelOffset [lhs, rhs]
+mkMax lhs rhs = postProcessMax (mkMaxCore lhs rhs) where
+  mkMaxCore (Max args1) (Max args2) = Map.unionWith max args1 args2
+  mkMaxCore (Max args1) rhs = uncurry (Map.insertWith max) (toLevelOffset rhs) args1
+  mkMaxCore lhs (Max args2) = uncurry (Map.insertWith max) (toLevelOffset lhs) args2
+  mkMaxCore lhs rhs = uncurry (Map.insertWith max) (toLevelOffset rhs) $ uncurry Map.singleton (toLevelOffset lhs)
+
+  postProcessMax :: Map Level Int -> Level
+  postProcessMax m = tryExtractSingleton (tryPruneZero m)
+
+  tryPruneZero :: Map Level Int -> Map Level Int
+  tryPruneZero m =
+    if Map.size m > 1 then
+      let m' = Map.delete mkZero m in
+       case Map.lookup mkZero m of
+        Just k | (maximum . Map.elems $ m') >= k -> m'
+        _ -> m
+    else m
+
+  tryExtractSingleton :: Map Level Int -> Level
+  tryExtractSingleton m = if Map.size m == 1
+                          then uncurry mkIteratedSucc . head . Map.assocs $ m
+                          else Max m
 
 {-
 IMax invariant:
