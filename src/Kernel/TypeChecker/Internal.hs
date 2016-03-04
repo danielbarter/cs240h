@@ -610,19 +610,14 @@ inductiveNormExt e = do
   elimOpConst <- liftMaybe . maybeConstant . getOperator $ e
   einfo@(ElimInfo indName lpNames numParams numACe numIndices kTarget depElim) <-
     liftMaybe $ Map.lookup (constName elimOpConst) elimInfos
-  debug ("found ElimInfo for: " ++ show elimOpConst)
   guard $ length (getAppArgs e) >= numACe + numIndices + 1
-  debug "passed: enough arguments"
   let majorIdx = numACe + numIndices
   let major = (getAppArgs e) !! majorIdx
   (introApp,compRule) <- findCompRule einfo elimOpConst major
   let elimArgs = getAppArgs e
   let introArgs = getAppArgs introApp
   guard $ length introArgs == numParams + (compRuleNumArgs compRule)
-  debug "passed: correct number of args in intro rule"
-  debug ("constLevels: " ++ show (constLevels elimOpConst) ++ "  !=  " ++ show (length lpNames))
   guard $ length (constLevels elimOpConst) == length lpNames
-  debug "passed: correct number of levels"
   let rhsArgs = reverse ((take numACe elimArgs) ++ (take (compRuleNumArgs compRule) $ drop numParams introArgs))
   let rhsBody = instantiateLevelParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
   let rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
@@ -710,9 +705,9 @@ quotientNormExt e = do
       return $ mkAppSeq (mkApp f (appArg mkAsApp)) extraArgs
     _ -> fail "element of type 'quot' not constructed with 'quot.mk'"
     where
-      quotLift = mkName ["lift","quot"]
-      quotInd = mkName ["ind","quot"]
-      quotMk = mkName ["mk","quot"]
+      quotLift = mkName ["quot","lift"]
+      quotInd = mkName ["quot","ind"]
+      quotMk = mkName ["quot","mk"]
 
 {- Adding to the environment -}
 

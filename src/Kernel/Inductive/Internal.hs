@@ -486,12 +486,10 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
-    debug (show (getElimName indName) ++ ":\n" ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim
     addIndEnv %= envAddElimInfo (getElimName indName) tcElimInfo
-    debug (show (getElimName indName) ++ ": added successfully\n")
 
 getElimName :: Name -> Name
 getElimName indName = nameRConsS indName "rec"
@@ -528,7 +526,6 @@ mkCompRule indName (IntroRule irName irType) minorPremise = do
                   (abstractLambdaSeq minorPremises
                    (abstractLambdaSeq nonRecArgs
                     (abstractLambdaSeq recArgs compRHS0))))
-  if length recApps > 0 then debug ("recApps[0]:\n" ++ show (recApps !! 0)) else return ()
   checkType compRHS1 elimLPNames
   addIndEnv %= envAddCompRule irName (CompRule (getElimName indName) (length nonRecArgs + length recArgs) compRHS1)
     where
@@ -567,9 +564,7 @@ wrapTC e lpNames tcFn msg = do
     Right (val, next) -> addIndNextId .= next >> return val
 
 checkType :: Expr -> [Name] -> AddInductiveMethod Expr
-checkType e lpNames = do
-  debug ("checkType: " ++ show e)
-  wrapTC e lpNames TypeChecker.inferType "inferType"
+checkType e lpNames = wrapTC e lpNames TypeChecker.inferType "inferType"
 
 ensureSort :: Expr -> [Name] -> AddInductiveMethod SortData
 ensureSort e lpNames = wrapTC e lpNames TypeChecker.ensureSort "ensureSort"
