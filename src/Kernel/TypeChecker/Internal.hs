@@ -582,8 +582,7 @@ quickIsDefEq t s = do
 isDefEqBinding :: BindingData -> BindingData -> DefEqMethod ()
 isDefEqBinding bind1 bind2 = do
   deqTryAnd  [(isDefEqMain (bindingDomain bind1) (bindingDomain bind2)),
-                do nextId <- lift gensym
-                   local <- return $ mkLocal (mkSystemNameI nextId) (bindingName bind1) (bindingDomain bind1) (bindingInfo bind1)
+                do local <- lift $ Local <$> mkLocalFor bind1
                    isDefEqMain (instantiate (bindingBody bind1) local) (instantiate (bindingBody bind2) local)]
 
 isDefEqLevels :: [Level] -> [Level] -> Bool

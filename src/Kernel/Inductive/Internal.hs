@@ -281,7 +281,6 @@ isValidIndApp e = do
   numArgs <- use (addIndNumArgs . __Just)
   let (op, args) = getAppOpArgs e
   opEq <- isDefEq op (Constant indTypeConst) lpNames
-  if opEq then debug ("defEq:\n" ++ show op ++ "\n=?=\n" ++ show (Constant indTypeConst)) else return ()
   return $ opEq && length args == numArgs && all (uncurry (==)) (zip (take numParams args) (map Local paramLocals))
 
 isRecArg :: Expr -> AddInductiveMethod Bool
@@ -399,7 +398,6 @@ computeElimRule = do
           indArgs <- constructIndArgs recArgs [0..]
           minorPremiseName <- mkFreshName
           let minorPremiseType0 = mkAppSeq (Local c) irIndices
-          debug ("minorPremiseType0:\n" ++ show minorPremiseType0)
           let minorPremiseType1 = if depElim
                                   then let introApp = mkAppSeq
                                                       (mkAppSeq
@@ -409,14 +407,9 @@ computeElimRule = do
                                                       (map Local recArgs) in
                                        mkApp minorPremiseType0 introApp
                                   else minorPremiseType0
-          debug ("minorPremiseType1:\n" ++ show minorPremiseType1)
-          debug ("nonRecArgs:\n" ++ show nonRecArgs)
-          debug ("recArgs:\n" ++ show recArgs)
-          debug ("indArgs:\n" ++ show indArgs)
           let minorPremiseType2 = abstractPiSeq nonRecArgs
                                   (abstractPiSeq recArgs
                                    (abstractPiSeq indArgs minorPremiseType1))
-          debug ("minorPremiseType:\n" ++ show minorPremiseType2)
           let minorPremise = mkLocalData minorPremiseName (mkName ["e"]) minorPremiseType2 BinderDefault
           (addIndElimInfo . __Just . elimInfoMinorPremises) %= (++ [minorPremise])
 
@@ -437,7 +430,6 @@ splitIntroRuleType irType = splitIntroRuleTypeCore [] [] irType 0
                           addIndKTarget .= False
                           local <- mkLocalFor pi
                           argIsRec <- isRecArg (bindingDomain pi)
-                          if argIsRec then debug ("recArg:\n" ++ show (bindingDomain pi)) else return ()
                           let (newNonRecArgs, newRecArgs) = if argIsRec then (nonRecArgs, recArgs ++ [local]) else (nonRecArgs ++ [local], recArgs)
                           splitIntroRuleTypeCore newNonRecArgs newRecArgs (instantiate (bindingBody pi) (Local local)) (paramNum+1)
               _ -> return (nonRecArgs, recArgs, irType)
@@ -499,6 +491,7 @@ declareElimRule =
     let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim
     addIndEnv %= envAddElimInfo (getElimName indName) tcElimInfo
+    debug (show (getElimName indName) ++ ": added successfully\n")
 
 getElimName :: Name -> Name
 getElimName indName = nameRConsS indName "rec"
@@ -535,6 +528,7 @@ mkCompRule indName (IntroRule irName irType) minorPremise = do
                   (abstractLambdaSeq minorPremises
                    (abstractLambdaSeq nonRecArgs
                     (abstractLambdaSeq recArgs compRHS0))))
+  if length recApps > 0 then debug ("recApps[0]:\n" ++ show (recApps !! 0)) else return ()
   checkType compRHS1 elimLPNames
   addIndEnv %= envAddCompRule irName (CompRule (getElimName indName) (length nonRecArgs + length recArgs) compRHS1)
     where
@@ -549,14 +543,15 @@ mkCompRule indName (IntroRule irName irType) minorPremise = do
         indIndexLocals <- use (addIndIndIndexLocals . __Just)
         restApps <- constructRecApps recArgs
         recArgType <- whnf . localType $ recArg
-        (xs, _) <- constructIndArgArgs recArgType
+        (xs, recArgBody) <- constructIndArgArgs recArgType
+        recArgIndices <- getIndices recArgBody
         let elimName = getElimName indName
         elimLPNames <- map mkLevelParam <$> getElimLPNames
         let recApp0 = mkConstant elimName elimLPNames
         let recApp1 = mkApp (mkAppSeq (mkAppSeq (mkApp (mkAppSeq recApp0 (map Local paramLocals))
                                                            (Local c))
                                        (map Local minorPremises))
-                             (map Local indIndexLocals))
+                             recArgIndices)
                       (mkAppSeq (Local recArg) (map Local xs))
         let recApp2 = abstractLambdaSeq xs recApp1
         return $ recApp2 : restApps
@@ -572,7 +567,9 @@ wrapTC e lpNames tcFn msg = do
     Right (val, next) -> addIndNextId .= next >> return val
 
 checkType :: Expr -> [Name] -> AddInductiveMethod Expr
-checkType e lpNames = wrapTC e lpNames TypeChecker.inferType "inferType"
+checkType e lpNames = do
+  debug ("checkType: " ++ show e)
+  wrapTC e lpNames TypeChecker.inferType "inferType"
 
 ensureSort :: Expr -> [Name] -> AddInductiveMethod SortData
 ensureSort e lpNames = wrapTC e lpNames TypeChecker.ensureSort "ensureSort"
