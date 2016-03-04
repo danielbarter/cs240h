@@ -185,13 +185,14 @@ levelNotBiggerThan l1 l2 = go l1 l2 where
     | l1 == l2 = True
 
   go (Max args1) l2 = all (flip go l2) $ maxArgsToLevels args1
-  -- go l1 (Max args2) | any (go l1) $ maxArgsToLevels args2 = True
-  -- TODO(dhs): not sure why we need can't decide at this point
-  -- (once this fails and I figure it out, put a comment)
-  go l1 (Max args2) = any (go l1) $ maxArgsToLevels args2
+  -- Note: in the following condition, we do not give up if none of the elements on the right individually subsumes the entire left
+  -- Example: IMax l1 l4 <= Max [l1, l4]
+  go l1 (Max args2) | any (go l1) $ maxArgsToLevels args2 = True
 
   go (IMax lhs rhs) l2 = go lhs l2 && go rhs l2
   go l1 (IMax lhs rhs) = go l1 rhs
+
+
 
   go l1 l2 =
     let (l1', k1) = toLevelOffset l1

@@ -466,8 +466,11 @@ constructIndArgArgs recArgType = constructIndArgArgsCore [] recArgType
 getIndices :: Expr -> AddInductiveMethod [Expr]
 getIndices e = do
   e_n <- whnf e
-  numParams <- use (addIndIDecl . indDeclNumParams)
-  return $ drop numParams (getAppArgs e_n)
+  isValid <- isValidIndApp e_n
+  case isValid of
+    True -> do
+      numParams <- use (addIndIDecl . indDeclNumParams)
+      return $ drop numParams (getAppArgs e_n)
 
 declareElimRule :: AddInductiveMethod ()
 declareElimRule =
@@ -489,7 +492,6 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
-    debug ("elimRuleType:\n\n" ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim
