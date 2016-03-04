@@ -281,6 +281,7 @@ isValidIndApp e = do
   numArgs <- use (addIndNumArgs . __Just)
   let (op, args) = getAppOpArgs e
   opEq <- isDefEq op (Constant indTypeConst) lpNames
+  if opEq then debug ("defEq:\n" ++ show op ++ "\n=?=\n" ++ show (Constant indTypeConst)) else return ()
   return $ opEq && length args == numArgs && all (uncurry (==)) (zip (take numParams args) (map Local paramLocals))
 
 isRecArg :: Expr -> AddInductiveMethod Bool
@@ -392,24 +393,30 @@ computeElimRule = do
           depElim <- use addIndDepElim
           indLevel <- use $ addIndIndLevel . __Just
           levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
-          (nonrecArgs, recArgs, irBody) <- splitIntroRuleType irType
+          (nonRecArgs, recArgs, irBody) <- splitIntroRuleType irType
           irIndices <- getIndices irBody
           c <- use (addIndElimInfo . __Just . elimInfoC)
           indArgs <- constructIndArgs recArgs [0..]
           minorPremiseName <- mkFreshName
           let minorPremiseType0 = mkAppSeq (Local c) irIndices
+          debug ("minorPremiseType0:\n" ++ show minorPremiseType0)
           let minorPremiseType1 = if depElim
                                   then let introApp = mkAppSeq
                                                       (mkAppSeq
                                                        (mkAppSeq (mkConstant irName levels)
                                                                      (map Local paramLocals))
-                                                       (map Local nonrecArgs))
+                                                       (map Local nonRecArgs))
                                                       (map Local recArgs) in
                                        mkApp minorPremiseType0 introApp
                                   else minorPremiseType0
-          let minorPremiseType2 = abstractPiSeq nonrecArgs
+          debug ("minorPremiseType1:\n" ++ show minorPremiseType1)
+          debug ("nonRecArgs:\n" ++ show nonRecArgs)
+          debug ("recArgs:\n" ++ show recArgs)
+          debug ("indArgs:\n" ++ show indArgs)
+          let minorPremiseType2 = abstractPiSeq nonRecArgs
                                   (abstractPiSeq recArgs
                                    (abstractPiSeq indArgs minorPremiseType1))
+          debug ("minorPremiseType:\n" ++ show minorPremiseType2)
           let minorPremise = mkLocalData minorPremiseName (mkName ["e"]) minorPremiseType2 BinderDefault
           (addIndElimInfo . __Just . elimInfoMinorPremises) %= (++ [minorPremise])
 
@@ -420,15 +427,17 @@ splitIntroRuleType irType = splitIntroRuleTypeCore [] [] irType 0
       splitIntroRuleTypeCore nonRecArgs recArgs irType paramNum =
           do
             numParams <- use (addIndIDecl . indDeclNumParams)
-            paramLocal <- uses (addIndParamLocals . __Just) (!! paramNum)
             case irType of
-              Pi pi | paramNum < numParams -> splitIntroRuleTypeCore nonRecArgs recArgs (instantiate (bindingBody pi) (Local paramLocal)) (paramNum+1)
+              Pi pi | paramNum < numParams -> do
+                          paramLocal <- uses (addIndParamLocals . __Just) (!! paramNum)
+                          splitIntroRuleTypeCore nonRecArgs recArgs (instantiate (bindingBody pi) (Local paramLocal)) (paramNum+1)
                     | otherwise ->
                         do
                           -- intro rule has an argument, so we set KTarget to False
                           addIndKTarget .= False
                           local <- mkLocalFor pi
                           argIsRec <- isRecArg (bindingDomain pi)
+                          if argIsRec then debug ("recArg:\n" ++ show (bindingDomain pi)) else return ()
                           let (newNonRecArgs, newRecArgs) = if argIsRec then (nonRecArgs, recArgs ++ [local]) else (nonRecArgs ++ [local], recArgs)
                           splitIntroRuleTypeCore newNonRecArgs newRecArgs (instantiate (bindingBody pi) (Local local)) (paramNum+1)
               _ -> return (nonRecArgs, recArgs, irType)
@@ -485,6 +494,7 @@ declareElimRule =
     let elimType4 = foldr abstractPi elimType3 minorPremises
     let elimType5 = abstractPi c elimType4
     let elimType6 = abstractPiSeq paramLocals elimType5
+    debug (show (getElimName indName) ++ ":\n" ++ show elimType6)
     envAddAxiom (getElimName indName) elimLPNames elimType6
     let tcElimInfo = TypeChecker.ElimInfo indName elimLPNames numParams (numParams + 1 + length introRules)
                                           (length indIndexLocals) kTarget depElim

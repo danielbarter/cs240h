@@ -440,11 +440,10 @@ isDefEqCore t s = do
   deqTryIf (t_n /= t || s_n /= s) $ quickIsDefEq t_n s_n
   (t_nn, s_nn) <- reduceDefEq t_n s_n
 
-  case (t_nn, t_nn) of
+  case (t_nn, s_nn) of
     (Constant const1, Constant const2) | constName const1 == constName const2 &&
                                          isDefEqLevels (constLevels const1) (constLevels const2) -> throwE True
-    (Local local1, Local local2) | localName local1 == localName local2 ->
-      throwE True
+    (Local local1, Local local2) | localName local1 == localName local2 -> throwE True
     (App app1,App app2) -> deqCommitTo (isDefEqApp t_nn s_nn)
     _ -> return ()
 
