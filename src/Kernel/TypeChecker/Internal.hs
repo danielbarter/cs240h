@@ -30,8 +30,7 @@ import qualified Data.Maybe as Maybe
 import Debug.Trace
 
 import Kernel.Name
-import qualified Kernel.Level as Level
-import Kernel.Level (Level)
+import Kernel.Level
 import Kernel.Expr
 import qualified Kernel.DeqCache as DeqCache
 import Kernel.DeqCache (DeqCache, mkDeqCache)
@@ -248,8 +247,8 @@ checkClosed e = tcAssert (not $ hasFreeVars e) (DeclHasFreeVars e)
 checkLevel :: Level -> TCMethod ()
 checkLevel level = do
   tcr <- ask
-  maybe (return ()) (throwE . UndefLevelParam) $ Level.getUndefParam level (view tcrLPNames tcr)
-  maybe (return ()) (throwE . UndefGlobalLevel) $ Level.getUndefGlobal level (view (tcrEnv . envGlobalNames) tcr)
+  maybe (return ()) (throwE . UndefLevelParam) $ getUndefParam level (view tcrLPNames tcr)
+  maybe (return ()) (throwE . UndefGlobalLevel) $ getUndefGlobal level (view (tcrEnv . envGlobalNames) tcr)
 
 ensureSort :: Expr -> TCMethod SortData
 ensureSort e = case e of
@@ -283,7 +282,7 @@ inferType e = do
     Nothing -> do
       ty <- case e of
         Local local -> return $ localType local
-        Sort sort -> checkLevel (sortLevel sort) >> (return . mkSort . Level.mkSucc . sortLevel) sort
+        Sort sort -> checkLevel (sortLevel sort) >> (return . mkSort . mkSucc . sortLevel) sort
         Constant constant -> inferConstant constant
         Lambda lambda -> inferLambda lambda
         Pi pi -> inferPi pi
@@ -323,7 +322,7 @@ inferPi pi = do
   bodyTy <- inferType (instantiate (bindingBody pi) (Local local))
   bodyTyAsSort <- ensureSort bodyTy
   env <- asks _tcrEnv
-  return $ mkSort ((if view envPropImpredicative env then Level.mkIMax else Level.mkMax)
+  return $ mkSort ((if view envPropImpredicative env then mkIMax else mkMax)
                    (sortLevel domainTyAsSort) (sortLevel bodyTyAsSort))
 
 inferApp :: AppData -> TCMethod Expr
@@ -580,7 +579,7 @@ quickIsDefEq t s = do
   case (t, s) of
     (Lambda lam1, Lambda lam2) -> deqCommitTo (isDefEqBinding lam1 lam2)
     (Pi pi1, Pi pi2) -> deqCommitTo (isDefEqBinding pi1 pi2)
-    (Sort sort1, Sort sort2) -> throwE (sortLevel sort1 == sortLevel sort2)
+    (Sort sort1, Sort sort2) -> throwE (levelEquiv (sortLevel sort1) (sortLevel sort2))
     _ -> return ()
 
 -- | Given lambda/Pi expressions 't' and 's', return true iff 't' is def eq to 's', which holds iff 'domain(t)' is definitionally equal to 'domain(s)' and 'body(t)' is definitionally equal to 'body(s)'
@@ -591,7 +590,7 @@ isDefEqBinding bind1 bind2 = do
                    isDefEqMain (instantiate (bindingBody bind1) local) (instantiate (bindingBody bind2) local)]
 
 isDefEqLevels :: [Level] -> [Level] -> Bool
-isDefEqLevels ls1 ls2 = ls1 == ls2
+isDefEqLevels ls1 ls2 = all (uncurry levelEquiv) (zip ls1 ls2)
 
 deqCacheAddEquiv :: Expr -> Expr -> DefEqMethod ()
 deqCacheAddEquiv e1 e2 = tcsDeqCache %= DeqCache.addEquiv e1 e2

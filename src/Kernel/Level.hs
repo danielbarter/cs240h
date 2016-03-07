@@ -14,6 +14,7 @@ module Kernel.Level (
   , levelHasParam
   , instantiateLevel
   , getUndefParam, getUndefGlobal
+  , levelEquiv
   , levelNotBiggerThan
   , maybeParamName
   ) where

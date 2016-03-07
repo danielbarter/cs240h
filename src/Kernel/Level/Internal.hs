@@ -20,145 +20,227 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
+import Data.List (elemIndex, sortBy, genericLength)
+
+newtype SuccData = SuccData { succOf :: Level } deriving (Eq,Show,Ord)
+data MaxCoreData = MaxCoreData { isImax :: Bool, maxLHS :: Level, maxRHS :: Level } deriving (Eq,Show,Ord)
+
 data Level = Zero
-           | Succ Level
-           | Max (Map Level Int)
-           | IMax Level Level
+           | Succ SuccData
+           | Max MaxCoreData
+           | IMax MaxCoreData
            | LevelParam Name
            | GlobalLevel Name
-           deriving (Eq, Ord, Show)
+           deriving (Eq, Ord)
 
-{- Constructors -}
+showLevel :: Level -> String
+showLevel l = case toOffset l of
+  (l,0) -> "{ " ++ showLevel_core l ++ " }"
+  (l,k) -> "{ <" ++ show k ++ "> " ++ showLevel_core l ++ " }"
+  where
+    showLevel_core :: Level -> String
+    showLevel_core l = case l of
+      Zero -> "0"
+      Max max -> "(max " ++ showLevel (maxLHS max) ++ " " ++ showLevel (maxRHS max) ++ ")"
+      IMax imax -> "(max " ++ showLevel (maxLHS imax) ++ " " ++ showLevel (maxRHS imax) ++ ")"
+      LevelParam lp -> show lp
+      GlobalLevel gl -> "!" ++ show gl
 
-mkZero :: Level
-mkZero = Zero
+instance Show Level where show e = showLevel e
 
-mkSucc :: Level -> Level
-mkSucc pred = Succ pred
-
-{-
-Max invariants:
---------------
-1. the keys of the Max have unique base levels
-2. there are at least two keys
-3. the constructors of the keys are different from Max and Succ
-4. if Zero is a key, it maps to k > 0, and no other key maps to j >= k
-
-Note: mkMax of a Max and a non-Max might return a non-Max
-Example: mkMax (Max [(0,1), (l,0)]) (l,1) = (l,1)
--}
-mkMax :: Level -> Level -> Level
-mkMax lhs rhs = postProcessMax (mkMaxCore lhs rhs) where
-  mkMaxCore (Max args1) (Max args2) = Map.unionWith max args1 args2
-  mkMaxCore (Max args1) rhs = uncurry (Map.insertWith max) (toLevelOffset rhs) args1
-  mkMaxCore lhs (Max args2) = uncurry (Map.insertWith max) (toLevelOffset lhs) args2
-  mkMaxCore lhs rhs = uncurry (Map.insertWith max) (toLevelOffset rhs) $ uncurry Map.singleton (toLevelOffset lhs)
-
-  postProcessMax :: Map Level Int -> Level
-  postProcessMax m = tryExtractSingleton (tryPruneZero m)
-
-  tryPruneZero :: Map Level Int -> Map Level Int
-  tryPruneZero m =
-    if Map.size m > 1 then
-      let m' = Map.delete mkZero m in
-       case Map.lookup mkZero m of
-        Just k | (maximum . Map.elems $ m') >= k -> m'
-        _ -> m
-    else m
-
-  tryExtractSingleton :: Map Level Int -> Level
-  tryExtractSingleton m = if Map.size m == 1
-                          then uncurry mkIteratedSucc . head . Map.assocs $ m
-                          else Max m
-
-{-
-IMax invariant:
----------------
-We only create an IMax if:
-1. the RHS is a LevelParam or GlobalLevel
-2. the LHS is not zero
-3. the LHS and RHS are not the same
--}
-
-mkIMax :: Level -> Level -> Level
-mkIMax lhs rhs
-  | isDefinitelyNotZero rhs = mkMax lhs rhs
-  | isZero rhs = mkZero
-  | isZero lhs = rhs
-  | lhs == rhs = lhs
-  | otherwise = IMax lhs rhs
-
-mkLevelParam :: Name -> Level
-mkLevelParam = LevelParam
-
-mkGlobalLevel :: Name -> Level
-mkGlobalLevel = GlobalLevel
-
-{- Getters / checkers -}
-
-maxArgsToLevels :: Map Level Int -> [Level]
-maxArgsToLevels m = map (uncurry mkIteratedSucc) $ Map.toList m
-
-levelHasParam :: Level -> Bool
-levelHasParam l = case l of
-  LevelParam _ -> True
-  Succ pred -> levelHasParam pred
-  Max args -> any levelHasParam $ Map.keys args
-  IMax lhs rhs -> levelHasParam lhs || levelHasParam rhs
-  _ -> False
 
 getUndefParam :: Level -> [Name] -> Maybe Name
 getUndefParam l ns = case l of
-  Succ pred -> getUndefParam pred ns
-  Max args -> msum . map (flip getUndefParam ns) $ Map.keys args
-  IMax lhs rhs -> getUndefParam lhs ns `mplus` getUndefParam rhs ns
+  Zero -> Nothing
+  Succ succ -> getUndefParam (succOf succ) ns
+  Max max -> getUndefParam (maxLHS max) ns `mplus` getUndefParam (maxRHS max) ns
+  IMax imax -> getUndefParam (maxLHS imax) ns `mplus` getUndefParam (maxRHS imax) ns
   LevelParam n -> if elem n ns then Nothing else Just n
-  _ -> Nothing
+  GlobalLevel n -> Nothing
 
 getUndefGlobal :: Level -> Set Name -> Maybe Name
 getUndefGlobal l ns = case l of
-  Succ pred -> getUndefGlobal pred ns
-  Max args -> msum . map (flip getUndefGlobal ns) $ Map.keys args
-  IMax lhs rhs -> getUndefGlobal lhs ns `mplus` getUndefGlobal rhs ns
+  Zero -> Nothing
+  Succ succ -> getUndefGlobal (succOf succ) ns
+  Max max -> getUndefGlobal (maxLHS max) ns `mplus` getUndefGlobal (maxRHS max) ns
+  IMax imax -> getUndefGlobal (maxLHS imax) ns `mplus` getUndefGlobal (maxRHS imax) ns
+  LevelParam n -> Nothing
   GlobalLevel n -> if Set.member n ns then Nothing else Just n
-  _ -> Nothing
 
-isExplicit :: Level -> Bool
+{- |
+A level is explicit if it is of the form 'Succ^k Zero' for some 'k'.
+
+>>> is_explicit mk_zero
+True
+
+>>> is_explicit (mk_succ (mk_succ mk_zero))
+True
+
+>>> is_explicit (mkMax (mk_level_param (mk_name ["l"])) mk_zero)
+False
+-}
 isExplicit l = case l of
   Zero -> True
-  Succ pred -> isExplicit pred
-  _ -> False
+  Succ succ -> isExplicit (succOf succ)
+  Max max -> False
+  IMax imax -> False
+  LevelParam n -> False
+  GlobalLevel n -> False
 
-getExplicitDepth :: Level -> Int
-getExplicitDepth l = case l of
+getDepth l = case l of
   Zero -> 0
-  Succ pred -> 1 + getExplicitDepth pred
+  Succ succ -> 1 + getDepth (succOf succ)
+  Max max -> 0
+  IMax imax -> 0
+  LevelParam n -> 0
+  GlobalLevel n -> 0
 
-toLevelOffset :: Level -> (Level, Int)
-toLevelOffset l = case l of
-  Succ pred -> over _2 (+1) $ toLevelOffset pred
-  _ -> (l,0)
+{- |
+Factors out outermost sequence of 'mk_succ' applications.
 
-isZero :: Level -> Bool
+>>> toOffset mk_zero
+(Zero,0)
+
+>>> toOffset (mk_succ mk_zero)
+(Zero,1)
+
+>>> toOffset (mk_succ (mk_level_param (mk_name ["l"])))
+(LevelParam .l,1)
+-}
+toOffset l = case l of
+  Succ succ -> (\(p,q) -> (p,q+1)) $ toOffset (succOf succ)
+  otherwise -> (l,0)
+
 isZero l = case l of
   Zero -> True
   _ -> False
 
-mkIteratedSucc :: Level -> Int -> Level
+mkZero = Zero
+mkSucc l = Succ (SuccData l)
+
+mkLevelOne = mkSucc mkZero
+mkLevelTwo = mkSucc $ mkSucc mkZero
+
 mkIteratedSucc l k
   | k == 0 = l
-  | k > 0 = Succ $ mkIteratedSucc l (k-1)
+  | k > 0 = Succ (SuccData (mkIteratedSucc l (k-1)))
 
-isDefinitelyNotZero :: Level -> Bool
+mkMax l1 l2
+  | isExplicit l1 && isExplicit l2 = if getDepth l1 >= getDepth l2 then l1 else l2
+  | l1 == l2 = l1
+  | isZero l1 = l2
+  | isZero l2 = l1
+  | otherwise =
+    case l1 of
+      Max max | maxLHS max == l2 || maxRHS max == l2 -> l1
+      otherwise ->
+        case l2 of
+          Max max | maxLHS max == l1 || maxRHS max == l1 -> l2
+          otherwise ->
+            let (l1',k1) = toOffset l1
+                (l2',k2) = toOffset l2
+            in
+             if l1' == l2' then (if k1 >= k2 then l1 else l2) else Max (MaxCoreData False l1 l2)
+
+mkIMax l1 l2
+  | isDefinitelyNotZero l2 = mkMax l1 l2
+  | isZero l2 = l2
+  | isZero l1 = l2
+  | l1 == l2 = l1
+  | otherwise = IMax (MaxCoreData True l1 l2)
+
+mkLevelParam = LevelParam
+mkGlobalLevel = GlobalLevel
+
 isDefinitelyNotZero l = case l of
   Zero -> False
   LevelParam _ -> False
   GlobalLevel _ -> False
   Succ _ -> True
-  Max args -> any isDefinitelyNotZero $ maxArgsToLevels args
-  IMax lhs rhs -> isDefinitelyNotZero rhs
+  Max max -> isDefinitelyNotZero (maxLHS max) || isDefinitelyNotZero (maxRHS max)
+  IMax imax -> isDefinitelyNotZero (maxRHS imax)
 
-{- Traversals -}
+levelHasParam l = case l of
+  LevelParam _ -> True
+  Succ succ -> levelHasParam (succOf succ)
+  Max max -> levelHasParam (maxLHS max) || levelHasParam (maxRHS max)
+  IMax imax -> levelHasParam (maxLHS imax) || levelHasParam (maxRHS imax)
+  _ -> False
+
+
+levelKindRank l = case l of
+  Zero -> 0
+  Succ _ -> 1
+  Max _ -> 2
+  IMax _ -> 3
+  LevelParam _ -> 4
+  GlobalLevel _ -> 5
+
+levelNormCmp l1 l2 = if l1 == l2 then EQ else levelNormCmpCore (toOffset l1) (toOffset l2)
+
+levelNormCmpCore (l1,k1) (l2,k2)
+  | l1 == l2 = compare k1 k2
+  | levelKindRank l1 /= levelKindRank l2 = compare (levelKindRank l1) (levelKindRank l2)
+  | otherwise =
+    case (l1,l2) of
+      (LevelParam n1,LevelParam n2) -> compare n1 n2
+      (GlobalLevel n1,GlobalLevel n2) -> compare n1 n2
+      (Max max1,Max max2) -> levelNormCmpMaxCore max1 max2
+      (IMax max1,IMax max2) -> levelNormCmpMaxCore max1 max2
+
+levelNormCmpMaxCore (MaxCoreData _ l1a l2a) (MaxCoreData _ l1b l2b)
+  | l1a /= l1b = levelNormCmp l1a l1b
+  | otherwise = levelNormCmp l2a l2b
+
+collectMaxArgs (Max (MaxCoreData False l1 l2)) = collectMaxArgs l1 ++ collectMaxArgs l2
+collectMaxArgs l = [l]
+
+-- called on sorted explicits
+removeSmallExplicits [] = Nothing
+removeSmallExplicits [l] = Just l
+removeSmallExplicits (l:ls) = removeSmallExplicits ls
+
+normalizeLevel l = let p = toOffset l in case fst p of
+  Zero -> l
+  LevelParam _ -> l
+  GlobalLevel _ -> l
+  IMax (MaxCoreData True l1 l2) ->
+    let l1_n = normalizeLevel l1
+        l2_n = normalizeLevel l2
+    in
+     if l1 /= l1_n || l2 /= l2_n then mkIteratedSucc (mkIMax l1_n l2_n) (snd p) else l
+  Max max ->
+    let max_args = (sortBy levelNormCmp) . concat . (map (collectMaxArgs . normalizeLevel)) $ collectMaxArgs (Max max)
+        explicit = removeSmallExplicits $ filter isExplicit max_args
+        non_explicits = let rest = filter (not . isExplicit) max_args
+                            (but_last,last) = foldl (\ (keep,prev) curr ->
+                                                      if fst (toOffset prev) == fst (toOffset curr)
+                                                      then (keep,curr)
+                                                      else (keep ++ [prev],curr))
+                                              ([],head rest)
+                                              (tail rest)
+                        in but_last ++ [last]
+        explicits = case explicit of
+          Nothing -> []
+          Just x -> if snd (toOffset x) <= maximum (map (snd . toOffset) non_explicits) then [] else [x]
+        all_args = explicits ++ non_explicits
+        lifted_args = map (flip mkIteratedSucc (snd p)) all_args
+    in
+     mkBigMax lifted_args
+
+mkBigMax [] = mkZero
+mkBigMax [l] = l
+mkBigMax (x:xs) = mkMax x (mkBigMax xs)
+
+-- | Check whether two levels are equivalent (modulo normalizing 'max')
+--
+-- >>> let lp = mkLevelParam (mk_name ["l1"])
+-- >>> levelEquiv (mkMax (mkMax mkLevelOne lp) mkZero) (mkMax lp mkLevelOne)
+-- True
+levelEquiv l1 l2 = l1 == l2 || normalizeLevel l1 == normalizeLevel l2
+
+
+-- Replace
 
 type LevelReplaceFn = (Level -> Maybe Level)
 
@@ -169,53 +251,51 @@ replaceInLevel f l =
     Nothing ->
       case l of
         Zero -> l
-        Succ pred -> mkSucc $ replaceInLevel f pred
-        Max args -> foldr mkMax mkZero $ map (replaceInLevel f) (maxArgsToLevels args)
-        IMax lhs rhs -> mkIMax (replaceInLevel f lhs) (replaceInLevel f rhs)
-        LevelParam _ -> l
-        GlobalLevel _ -> l
+        Succ succ -> mkSucc (replaceInLevel f $ succOf succ)
+        Max max -> mkMax (replaceInLevel f $ maxLHS max) (replaceInLevel f $ maxRHS max)
+        IMax imax -> mkIMax (replaceInLevel f $ maxLHS imax) (replaceInLevel f $ maxRHS imax)
+        LevelParam param -> l
+        GlobalLevel global -> l
 
 
 instantiateLevel :: [Name] -> [Level] -> Level -> Level
-instantiateLevel levelParamNames levels level =
-  replaceInLevel (instantiateLevelFn levelParamNames levels) level
+instantiateLevel level_param_names levels level =
+  replaceInLevel (instantiateLevelFn level_param_names levels) level
   where
     instantiateLevelFn :: [Name] -> [Level] -> LevelReplaceFn
-    instantiateLevelFn levelParamNames levels level
-      | not (length levelParamNames == length levels) = error "Wrong number of level params"
+    instantiateLevelFn level_param_names levels level
+      | not (genericLength level_param_names == genericLength levels) = error "Wrong number of level params"
       | not (levelHasParam level) = Just level
 
-    instantiateLevelFn levelParamNames levels (LevelParam name) =
-      case List.elemIndex name levelParamNames of
+    instantiateLevelFn level_param_names levels (LevelParam name) =
+      case elemIndex name level_param_names of
         Nothing -> Nothing
         Just idx -> Just (levels!!idx)
 
     instantiateLevelFn _ _ _ = Nothing
 
-levelNotBiggerThan :: Level -> Level -> Bool
-levelNotBiggerThan l1 l2 = go l1 l2 where
-  go l1 l2
-    | isZero l1 = True
-    | l1 == l2 = True
 
-  go (Max args1) l2 = all (flip go l2) $ maxArgsToLevels args1
-  -- Note: in the following condition, we do not give up if none of the elements on the right individually subsumes the entire left
-  -- Example: IMax l1 l4 <= Max [l1, l4]
-  go l1 (Max args2) | any (go l1) $ maxArgsToLevels args2 = True
+-- Order
 
-  go (IMax lhs rhs) l2 = go lhs l2 && go rhs l2
-  go l1 (IMax lhs rhs) = go l1 rhs
+levelNotBiggerThan l1 l2 = levelNotBiggerThanCore (normalizeLevel l1) (normalizeLevel l2) where
+  levelNotBiggerThanCore l1 l2
+    | l1 == l2 || isZero l1 = True
 
+  levelNotBiggerThanCore (Max max) l2 = levelNotBiggerThan (maxLHS max) l2 && levelNotBiggerThan (maxRHS max) l2
+  levelNotBiggerThanCore l1 (Max max)
+    | levelNotBiggerThan l1 (maxLHS max) || levelNotBiggerThan l1 (maxRHS max) = True
 
+  levelNotBiggerThanCore (IMax imax) l2 = levelNotBiggerThan (maxLHS imax) l2 && levelNotBiggerThan (maxRHS imax) l2
+  levelNotBiggerThanCore l1 (IMax imax) = levelNotBiggerThan l1 (maxRHS imax)
 
-  go l1 l2 =
-    let (l1', k1) = toLevelOffset l1
-        (l2', k2) = toLevelOffset l2 in
-     if isZero l1' || l1' == l2' then k1 <= k2 else
-       if k1 == k2 && k1 > 0 then go l1' l2' else
+  levelNotBiggerThanCore l1 l2 =
+    let (l1',k1) = toOffset l1
+        (l2',k2) = toOffset l2
+    in
+     if l1' == l2' || isZero l1' then k1 <= k2 else
+       if k1 == k2 && k1 > 0 then levelNotBiggerThan l1' l2' else
          False
 
-{- Misc -}
 maybeParamName :: Level -> Maybe Name
 maybeParamName l = case l of
                     LevelParam n -> Just n
