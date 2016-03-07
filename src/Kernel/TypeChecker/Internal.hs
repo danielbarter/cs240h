@@ -184,7 +184,8 @@ makeLenses ''TypeCheckerR
 data TypeCheckerS = TypeCheckerS {
   _tcsNextId :: Integer,
   _tcsDeqCache :: DeqCache,
-  _tcsInferTypeCache :: Map Expr Expr
+  _tcsInferTypeCache :: Map Expr Expr,
+  _tcsWhnfCache :: Map Expr Expr
   }
 
 makeLenses ''TypeCheckerS
@@ -193,7 +194,7 @@ mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
 
 mkTypeCheckerS :: Integer -> TypeCheckerS
-mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty
+mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty Map.empty
 
 type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
 
@@ -337,12 +338,25 @@ inferApp app = do
 {- Weak-head normal form (whnf) -}
 
 whnf :: Expr -> TCMethod Expr
-whnf e = do
-  e1 <- whnfCoreDelta 0 e
-  e2Maybe <- normalizeExt e1
-  case e2Maybe of
-    Nothing -> return e1
-    Just e2 -> whnf e2
+whnf e =
+  case e of
+   Var _ -> return e
+   Sort _ -> return e
+   Local _ -> return e
+   Pi _ -> return e
+   _ -> do
+     whnfCache <- use tcsWhnfCache
+     case Map.lookup e whnfCache of
+      Just ty -> return ty
+      Nothing -> do
+        e_n <- do
+          e1 <- whnfCoreDelta 0 e
+          e2Maybe <- normalizeExt e1
+          case e2Maybe of
+           Nothing -> return e1
+           Just e2 -> whnf e2
+        tcsWhnfCache %= Map.insert e e_n
+        return e_n
 
 whnfCoreDelta :: Int -> Expr -> TCMethod Expr
 whnfCoreDelta w e = do
