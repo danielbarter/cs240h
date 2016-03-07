@@ -25,7 +25,7 @@ data VarData = VarData { varIdx :: !Int } deriving (Eq,Show,Ord)
 
 data LocalData = LocalData { localName :: !Name ,
                              localPPName :: !Name,
-                             localType :: !Expr,
+                             localType :: Expr,
                              localInfo :: !BinderInfo,
                              localCache :: !ExprCache } deriving (Eq,Show,Ord)
 
@@ -33,11 +33,11 @@ data SortData = SortData { sortLevel :: !Level } deriving (Eq,Show,Ord)
 
 data ConstantData = ConstantData { constName :: !Name , constLevels :: ![Level] } deriving (Eq,Show,Ord)
 
-data AppData = AppData { appFn :: !Expr, appArg :: !Expr, appCache :: !ExprCache  } deriving (Eq,Show,Ord)
+data AppData = AppData { appFn :: Expr, appArg :: Expr, appCache :: !ExprCache  } deriving (Eq,Show,Ord)
 
 data BindingData = BindingData { bindingName :: !Name,
-                                 bindingDomain :: !Expr,
-                                 bindingBody :: !Expr,
+                                 bindingDomain :: Expr,
+                                 bindingBody :: Expr,
                                  bindingInfo :: !BinderInfo,
                                  bindingCache :: !ExprCache } deriving (Eq,Show,Ord)
 
