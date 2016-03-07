@@ -102,13 +102,15 @@ data Env = Env {
   _envGlobalNames :: Set Name,
   _envIndExt :: InductiveExt,
   _envQuotEnabled :: Bool,
+  _envHitsEnabled :: Bool,
   _envPropProofIrrel :: Bool,
   _envPropImpredicative :: Bool
   } deriving (Show)
 
 makeLenses ''Env
 
-mkStdEnv = Env Map.empty Set.empty mkEmptyInductiveExt True True True
+mkStdEnv = Env Map.empty Set.empty mkEmptyInductiveExt True False True True
+mkHottEnv = Env Map.empty Set.empty mkEmptyInductiveExt False True False False
 
 {- Decls -}
 
@@ -320,7 +322,9 @@ inferPi pi = do
   local <- mkLocalFor pi
   bodyTy <- inferType (instantiate (bindingBody pi) (Local local))
   bodyTyAsSort <- ensureSort bodyTy
-  return $ mkSort (Level.mkIMax (sortLevel domainTyAsSort) (sortLevel bodyTyAsSort))
+  env <- asks _tcrEnv
+  return $ mkSort ((if view envPropImpredicative env then Level.mkIMax else Level.mkMax)
+                   (sortLevel domainTyAsSort) (sortLevel bodyTyAsSort))
 
 inferApp :: AppData -> TCMethod Expr
 inferApp app = do
@@ -565,9 +569,10 @@ isProp e = do
 isDefEqProofIrrel :: Expr -> Expr -> DefEqMethod ()
 isDefEqProofIrrel t s = do
   t_ty <- lift $ inferType t
-  s_ty <- lift $ inferType s
   t_ty_is_prop <- lift $ isProp t_ty
-  deqTryIf t_ty_is_prop $ isDefEqMain t_ty s_ty
+  deqTryIf t_ty_is_prop $ do
+    s_ty <- lift $ inferType s
+    isDefEqMain t_ty s_ty
 
 quickIsDefEq :: Expr -> Expr -> DefEqMethod ()
 quickIsDefEq t s = do
@@ -708,6 +713,35 @@ quotientNormExt e = do
       quotLift = mkName ["quot","lift"]
       quotInd = mkName ["quot","ind"]
       quotMk = mkName ["quot","mk"]
+
+{- Homotopy type theory -}
+
+hitsNormExt :: Expr -> MaybeT TCMethod Expr
+hitsNormExt e = do
+  env <- asks _tcrEnv
+  guard $ view envHitsEnabled env
+  op <- liftMaybe $ maybeConstant (getOperator e)
+  (mkPos, mkName, fPos) <- if constName op == truncRec then return (5, truncTr, 4) else
+                             if constName op == quotientRec then return (5, quotientClassOf, 3) else
+                               fail "no hit comp rule applies"
+  args <- return $ getAppArgs e
+  guard $ length args > mkPos
+  mk <- lift . whnf $ args !! mkPos
+  case mk of
+    App mkAsApp -> do
+      let mkOp = getOperator mk
+      mkOpConst <- liftMaybe $ maybeConstant mkOp
+      guard $ constName mkOpConst == mkName
+      let f = args !! fPos
+      let elimArity = mkPos + 1
+      let extraArgs = drop elimArity args
+      return $ mkAppSeq (mkApp f (appArg mkAsApp)) extraArgs
+    _ -> fail "element of type 'trunc' not constructed with 'trunc.tr'"
+    where
+      truncRec = mkName ["trunc", "rec"]
+      truncTr = mkName ["trunc", "tr"]
+      quotientRec = mkName ["quotient"]
+      quotientClassOf = mkName ["quotient","class_of"]
 
 {- Adding to the environment -}
 

@@ -321,7 +321,7 @@ computeElimRule = do
     elimOnlyAtLevelZero = do
       env <- use addIndEnv
       isDefinitelyNotZero <- use addIndIsDefinitelyNotZero
-      if view envPropImpredicative env && isDefinitelyNotZero then return False else do
+      if not (view envPropImpredicative env) || isDefinitelyNotZero then return False else do
         (IndDecl _ _ _ _ introRules) <- use addIndIDecl
         case introRules of
          [] -> return False

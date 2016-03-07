@@ -45,7 +45,8 @@ makeLenses ''Context
 
 blank = char ' '
 
-mkContext = Context (Map.insert 0 noName Map.empty) (Map.insert 0 mkZero Map.empty) Map.empty mkStdEnv 0 0
+--mkContext = Context (Map.insert 0 noName Map.empty) (Map.insert 0 mkZero Map.empty) Map.empty mkStdEnv 0 0
+mkContext = Context (Map.insert 0 noName Map.empty) (Map.insert 0 mkZero Map.empty) Map.empty mkHottEnv 0 0
 
 type ParserMethod = ParsecT String () (ExceptT ExportError (S.State Context))
 
