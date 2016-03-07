@@ -381,7 +381,7 @@ unfoldNameCore w e = case e of
 
 -- TODO(dhs): check for bools and support HoTT
 normalizeExt :: Expr -> TCMethod (Maybe Expr)
-normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e)
+normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e `mplus` hitsNormExt e)
 
 gensym :: TCMethod Integer
 gensym = tcsNextId %%= \n -> (n, n + 1)
@@ -719,12 +719,14 @@ hitsNormExt :: Expr -> MaybeT TCMethod Expr
 hitsNormExt e = do
   env <- asks _tcrEnv
   guard $ view envHitsEnabled env
+  debug "HIT enabled!"
   op <- liftMaybe $ maybeConstant (getOperator e)
   (mkPos, mkName, fPos) <- if constName op == truncRec then return (5, truncTr, 4) else
                              if constName op == quotientRec then return (5, quotientClassOf, 3) else
                                fail "no hit comp rule applies"
   args <- return $ getAppArgs e
   guard $ length args > mkPos
+  debug "HIT!"
   mk <- lift . whnf $ args !! mkPos
   case mk of
     App mkAsApp -> do
@@ -739,7 +741,7 @@ hitsNormExt e = do
     where
       truncRec = mkName ["trunc", "rec"]
       truncTr = mkName ["trunc", "tr"]
-      quotientRec = mkName ["quotient"]
+      quotientRec = mkName ["quotient", "rec"]
       quotientClassOf = mkName ["quotient","class_of"]
 
 {- Adding to the environment -}
