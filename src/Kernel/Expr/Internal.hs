@@ -17,37 +17,37 @@ import qualified Data.List as List
 import Control.Monad (mplus)
 
 data BinderInfo = BinderDefault | BinderImplicit | BinderStrict | BinderClass deriving (Eq,Show,Ord)
-data ExprCache = ExprCache { cacheHasLocal :: Bool,
-                             cacheHasLevelParam :: Bool,
-                             cacheFreeVarRange :: Int } deriving (Eq,Show,Ord)
+data ExprCache = ExprCache { cacheHasLocal :: !Bool,
+                             cacheHasLevelParam :: !Bool,
+                             cacheFreeVarRange :: !Int } deriving (Eq,Show,Ord)
 
-data VarData = VarData { varIdx :: Int } deriving (Eq,Show,Ord)
+data VarData = VarData { varIdx :: !Int } deriving (Eq,Show,Ord)
 
-data LocalData = LocalData { localName :: Name ,
-                             localPPName :: Name,
-                             localType :: Expr,
-                             localInfo :: BinderInfo,
-                             localCache :: ExprCache } deriving (Eq,Show,Ord)
+data LocalData = LocalData { localName :: !Name ,
+                             localPPName :: !Name,
+                             localType :: !Expr,
+                             localInfo :: !BinderInfo,
+                             localCache :: !ExprCache } deriving (Eq,Show,Ord)
 
-data SortData = SortData { sortLevel :: Level } deriving (Eq,Show,Ord)
+data SortData = SortData { sortLevel :: !Level } deriving (Eq,Show,Ord)
 
-data ConstantData = ConstantData { constName :: Name , constLevels :: [Level] } deriving (Eq,Show,Ord)
+data ConstantData = ConstantData { constName :: !Name , constLevels :: ![Level] } deriving (Eq,Show,Ord)
 
-data AppData = AppData { appFn :: Expr, appArg :: Expr, appCache :: ExprCache  } deriving (Eq,Show,Ord)
+data AppData = AppData { appFn :: !Expr, appArg :: !Expr, appCache :: !ExprCache  } deriving (Eq,Show,Ord)
 
-data BindingData = BindingData { bindingName :: Name,
-                                 bindingDomain :: Expr,
-                                 bindingBody :: Expr,
-                                 bindingInfo :: BinderInfo,
-                                 bindingCache :: ExprCache } deriving (Eq,Show,Ord)
+data BindingData = BindingData { bindingName :: !Name,
+                                 bindingDomain :: !Expr,
+                                 bindingBody :: !Expr,
+                                 bindingInfo :: !BinderInfo,
+                                 bindingCache :: !ExprCache } deriving (Eq,Show,Ord)
 
 data Expr = Var VarData
-                | Local LocalData
-                | Sort SortData
-                | Constant ConstantData
-                | Lambda BindingData
-                | Pi BindingData
-                | App AppData
+                | Local !LocalData
+                | Sort !SortData
+                | Constant !ConstantData
+                | Lambda !BindingData
+                | Pi !BindingData
+                | App !AppData
                 deriving (Eq,Ord)
 
 {- TODO(dhs): replace with pretty-printer -}
