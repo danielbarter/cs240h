@@ -16,6 +16,7 @@ import qualified Control.Monad.State as S
 import Control.Monad.Reader
 import Control.Monad.Trans.Except
 
+import Numeric
 import Lens.Simple (makeLenses, view, over, use, uses, (%=), (.=), (<~), (+=))
 
 import qualified Data.Map as Map
@@ -51,7 +52,9 @@ mkContext = Context (Map.insert 0 noName Map.empty) (Map.insert 0 mkZero Map.emp
 type ParserMethod = ParsecT String () (ExceptT ExportError (S.State Context))
 
 parseInteger :: ParserMethod Integer
-parseInteger = liftM read (many1 digit)
+parseInteger = do
+  digits <- many1 digit
+  return . fst $ ((readDec digits)!!0)
 
 parseInt :: ParserMethod Int
 parseInt = liftM read (many1 digit)
