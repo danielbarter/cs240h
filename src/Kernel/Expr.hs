@@ -19,7 +19,7 @@ module Kernel.Expr (
   , localName, localType
   , constName, constLevels
   , bindingName, bindingDomain, bindingBody, bindingInfo
-  , appFn, appArg, getOperator, getAppArgs, getAppOpArgs
+  , appFn, appArg, getOperator, getAppArgs, getAppOpArgs, getAppRevArgs, getAppOpRevArgs, mkRevAppSeq
   , exprHasLocal, exprHasLevelParam, hasFreeVars, closed
   , abstractPi, abstractPiSeq, abstractLambda, abstractLambdaSeq
   , instantiate, instantiateSeq, instantiateLevelParams

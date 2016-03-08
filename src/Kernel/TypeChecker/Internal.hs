@@ -367,12 +367,25 @@ whnfCoreDelta w e = do
 whnfCore :: Expr -> TCMethod Expr
 whnfCore e = case e of
   App app -> do
-    let (fn, arg) = (appFn app, appArg app)
-    fnWhnf <- whnfCore fn
-    case fnWhnf of
-      Lambda lam -> whnfCore (instantiate (bindingBody lam) arg)
-      otherwise -> if fnWhnf == fn then return e else whnfCore (mkApp fnWhnf arg)
+    let (op, revArgs) = getAppOpRevArgs e
+    op_n <- whnfCore op
+    {- TODO this is probably messed up -}
+    case op_n of
+      Lambda _ -> let (m, body) = bodyOfLambdaN (length revArgs) op_n
+                      argsToInstantiate = drop (length revArgs - m) revArgs
+                      remainingArgs = take (length revArgs - m) revArgs in
+                   if m > length revArgs then undefined else
+                     whnfCore (mkRevAppSeq (instantiateSeq body argsToInstantiate) remainingArgs)
+      _ -> if op_n == op then return e else whnfCore (mkRevAppSeq op_n revArgs)
   _ -> return e
+  where
+    bodyOfLambdaN :: Int -> Expr -> (Int, Expr)
+    bodyOfLambdaN maxArgs e = bodyOfLambdaNCore maxArgs 0 e
+
+    bodyOfLambdaNCore :: Int -> Int -> Expr -> (Int, Expr)
+    bodyOfLambdaNCore maxArgs numArgs e = case e of
+      Lambda lam | numArgs < maxArgs -> bodyOfLambdaNCore maxArgs (numArgs+1) (bindingBody lam)
+      _ -> (numArgs, e)
 
 unfoldNames :: Int -> Expr -> TCMethod Expr
 unfoldNames w e = case e of
@@ -637,7 +650,7 @@ inductiveNormExt e = do
   guard $ length introArgs == numParams + (compRuleNumArgs compRule)
   guard $ length (constLevels elimOpConst) == length lpNames
   let rhsArgs = reverse ((take numACe elimArgs) ++ (take (compRuleNumArgs compRule) $ drop numParams introArgs))
-  let rhsBody = instantiateLevelParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
+  let rhsBody = instantiateLevelParams (snd . innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
   let rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
   let extraArgs = drop (majorIdx + 1) elimArgs
   return $ mkAppSeq rhsBodyInstantiated extraArgs

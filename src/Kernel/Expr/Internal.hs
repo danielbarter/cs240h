@@ -111,12 +111,17 @@ getOperator e = case e of
   _ -> e
 
 getAppArgs :: Expr -> [Expr]
-getAppArgs e = reverse (getAppArgs_rev e) where
-  getAppArgs_rev (App app) = appArg app : getAppArgs_rev (appFn app)
-  getAppArgs_rev _ = []
+getAppArgs e = reverse (getAppRevArgs e)
 
 getAppOpArgs :: Expr -> (Expr, [Expr])
 getAppOpArgs e = (getOperator e, getAppArgs e)
+
+getAppRevArgs :: Expr -> [Expr]
+getAppRevArgs (App app) = appArg app : getAppRevArgs (appFn app)
+getAppRevArgs _ = []
+
+getAppOpRevArgs :: Expr -> (Expr, [Expr])
+getAppOpRevArgs e = (getOperator e, getAppRevArgs e)
 
 {- Constructors -}
 
@@ -146,8 +151,12 @@ mkApp fn arg = App (AppData fn arg (ExprCache
                                      (max (getFreeVarRange fn) (getFreeVarRange arg))))
 
 mkAppSeq :: Expr -> [Expr] -> Expr
-mkAppSeq fn [] = fn
-mkAppSeq fn (arg:args) = mkAppSeq (mkApp fn arg) args
+mkAppSeq op [] = op
+mkAppSeq op (arg:args) = mkAppSeq (mkApp op arg) args
+
+mkRevAppSeq :: Expr -> [Expr] -> Expr
+mkRevAppSeq op [] = op
+mkRevAppSeq op (arg:args) = mkApp (mkRevAppSeq op args) arg
 
 mkBinding :: Bool -> Name -> Expr -> Expr -> BinderInfo -> Expr
 mkBinding isPi name domain body binfo =
@@ -314,10 +323,11 @@ abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
 mkProp :: Expr
 mkProp = mkSort mkZero
 
-innerBodyOfLambda :: Expr -> Expr
-innerBodyOfLambda e = case e of
-  Lambda lam -> innerBodyOfLambda (bindingBody lam)
-  _ -> e
+innerBodyOfLambda :: Expr -> (Int, Expr)
+innerBodyOfLambda e = innerBodyOfLambdaCore 0 e where
+  innerBodyOfLambdaCore m e = case e of
+    Lambda lam -> innerBodyOfLambdaCore (m+1) (bindingBody lam)
+    _ -> (m, e)
 
 isConstant :: Expr -> Bool
 isConstant (Constant _) = True
