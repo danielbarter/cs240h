@@ -36,21 +36,20 @@ inferApp1 =
 
 inferConst1 =
   let env = mkStdEnv
-      ax_type = mkPiDefault mkType mkProp
-      ax_name = mkName ["ax1"]
-      decl = mkAxiom ax_name [] ax_type in
-  case envAddAxiom ax_name [] ax_type env of
+      axType = mkPiDefault mkType mkProp
+      axName = mkName ["ax1"] in
+  case envAddAxiom axName [] axType env of
     Right newEnv ->
       describe "inferConst1" $ do
         it "basic" $ do
-          case tcRun newEnv [] 0 (inferType (mkConstant ax_name [])) of
-            Right e -> e `shouldBe` ax_type
+          case tcRun newEnv [] 0 (inferType (mkConstant axName [])) of
+            Right e -> e `shouldBe` axType
 
 
 hpass = return ()
 hfail = True `shouldBe` False
 
-trigger_exceptions = describe "TypeChecker exceptions" $ do
+triggerExceptions = describe "TypeChecker exceptions" $ do
   it "UndefGlobalLevel" $ do
     let n = mkName ["undef"]
         uni = mkGlobalLevel n
@@ -123,4 +122,4 @@ spec = do
   inferLambda1
   inferApp1
   inferConst1
-  trigger_exceptions
+  triggerExceptions

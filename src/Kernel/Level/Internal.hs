@@ -232,16 +232,16 @@ replaceInLevel f l =
 
 
 instantiateLevel :: [Name] -> [Level] -> Level -> Level
-instantiateLevel level_param_names levels level =
-  replaceInLevel (instantiateLevelFn level_param_names levels) level
+instantiateLevel lpNames levels level =
+  replaceInLevel (instantiateLevelFn lpNames levels) level
   where
     instantiateLevelFn :: [Name] -> [Level] -> LevelReplaceFn
-    instantiateLevelFn level_param_names levels level
-      | not (genericLength level_param_names == genericLength levels) = error "Wrong number of level params"
+    instantiateLevelFn lpNames levels level
+      | not (genericLength lpNames == genericLength levels) = error "Wrong number of level params"
       | not (levelHasParam level) = Just level
 
-    instantiateLevelFn level_param_names levels (LevelParam name) =
-      case elemIndex name level_param_names of
+    instantiateLevelFn lpNames levels (LevelParam name) =
+      case elemIndex name lpNames of
         Nothing -> Nothing
         Just idx -> Just (levels!!idx)
 

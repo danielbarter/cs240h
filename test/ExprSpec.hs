@@ -16,7 +16,7 @@ getFreeVarRangeSpec =
     describe "getFreeVarRange" $ do
       it "should be 0 for constants" $ do
         getFreeVarRange e1 `shouldBe` 0
-      it "should be 1+v_idx for Vars inside Apps" $ do
+      it "should be 1+vIdx for Vars inside Apps" $ do
         getFreeVarRange e2 `shouldBe` 2
       it "should be 0 for sorts" $ do
         getFreeVarRange e3 `shouldBe` 0
@@ -56,28 +56,28 @@ instantiateSpec =
       e1 = mkLambdaDefault (mkApp c1 c2) (mkVar 1)
       subst1 = mkApp (mkVar 10) mkType
       ret1 = instantiate e1 subst1
-      expected_ret1 = mkLambdaDefault (mkApp c1 c2) (mkApp (mkVar 11) mkType)
+      expectedRet1 = mkLambdaDefault (mkApp c1 c2) (mkApp (mkVar 11) mkType)
 
       e2 = mkLambdaDefault mkType (mkAppSeq (mkVar 0) [mkVar 1,mkVar 2])
       subst2 = c1
       ret2 = instantiate e2 subst2
-      expected_ret2 = mkLambdaDefault mkType (mkAppSeq (mkVar 0) [c1,mkVar 1])
+      expectedRet2 = mkLambdaDefault mkType (mkAppSeq (mkVar 0) [c1,mkVar 1])
 
       ret3 = instantiate ret2 c2
-      expected_ret3 = mkLambdaDefault mkType (mkAppSeq (mkVar 0) [c1,c2])
+      expectedRet3 = mkLambdaDefault mkType (mkAppSeq (mkVar 0) [c1,c2])
 
       ret4 = instantiate (mkPiDefault (mkVar 3) (mkVar 4)) (mkVar 0)
-      expected_ret4 = mkPiDefault (mkVar 2) (mkVar 3)
+      expectedRet4 = mkPiDefault (mkVar 2) (mkVar 3)
   in do
     describe "instantiate" $ do
       it "should lift free vars in subst" $ do
-        ret1 `shouldBe` expected_ret1
+        ret1 `shouldBe` expectedRet1
       it "should lift free vars in subst" $ do
-        ret2 `shouldBe` expected_ret2
+        ret2 `shouldBe` expectedRet2
       it "should lift free vars in subst" $ do
-        ret3 `shouldBe` expected_ret3
+        ret3 `shouldBe` expectedRet3
       it "should decrement untouched free vars in e" $ do
-        ret4 `shouldBe` expected_ret4
+        ret4 `shouldBe` expectedRet4
 
 instantiateLevelParamsSpec :: Spec
 instantiateLevelParamsSpec =
@@ -112,7 +112,7 @@ appSeqSpec =
 
       s = mkLambdaDefault mkProp (mkVar 2)
   in do
-    describe "app_seq" $ do
+    describe "appSeq" $ do
       it "mkAppSeq (getOperator e) (getAppArgs e) should yield e" $ do
         e `shouldBe` e'
       it "getOperator e = e if e is not app" $ do

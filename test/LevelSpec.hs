@@ -53,25 +53,25 @@ replaceInLevelSpec =
 
 instantiateLevelSpec :: Spec
 instantiateLevelSpec =
-  let lp_names = map (\s -> mkName [s]) ["lp1","lp2"]
+  let lpNames = map (\s -> mkName [s]) ["lp1","lp2"]
       lp1 = mkLevelParam (mkName ["lp1"])
       lp2 = mkLevelParam (mkName ["lp2"])
       lp3 = mkLevelParam (mkName ["lp3"])
-      old_level = mkMax lp1 (mkMax lp2 lp3)
+      oldLevel = mkMax lp1 (mkMax lp2 lp3)
 
-      new_levels1 = [mkZero,lp3]
-      new_level1 = instantiateLevel lp_names new_levels1 old_level
-      expected_new_level1 = lp3
+      newLevels1 = [mkZero,lp3]
+      newLevel1 = instantiateLevel lpNames newLevels1 oldLevel
+      expectedNewLevel1 = lp3
 
-      new_levels2 = [lp2,lp1]
-      new_level2 = instantiateLevel lp_names new_levels2 old_level
-      expected_new_level2 = mkMax lp2 (mkMax lp1 lp3)
+      newLevels2 = [lp2,lp1]
+      newLevel2 = instantiateLevel lpNames newLevels2 oldLevel
+      expectedNewLevel2 = mkMax lp2 (mkMax lp1 lp3)
   in do
     describe "instantiateLevel" $ do
         it "sanity test" $ do
-          new_level1 `shouldBe` expected_new_level1
+          newLevel1 `shouldBe` expectedNewLevel1
         it "should work when substituting existing level param" $ do
-          new_level2 `shouldBe` expected_new_level2
+          newLevel2 `shouldBe` expectedNewLevel2
 
 
 levelsMiscSpec :: Spec

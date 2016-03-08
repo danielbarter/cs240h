@@ -595,19 +595,3 @@ envAddAxiom name lpNames ty = do
   case TypeChecker.envAddAxiom name lpNames ty env of
     Left tcErr -> throwE $ TypeCheckError tcErr "envAddAxiom"
     Right env -> addIndEnv .= env
-
-{-
-certify_ideclaration :: IndDecl -> AddInductiveMethod CertifiedDeclaration
-certify_ideclaration (IndDecl name ty intro_rules) = do
-  level_names <- gets m_level_names
-  certify_declaration name level_names ty
-
-certify_declaration :: Name -> [Name] -> Expr -> AddInductiveMethod CertifiedDeclaration
-certify_declaration name level_names ty = do
-  env <- gets m_env
-  next_id <- gets m_next_id
-  let decl = mk_axiom name level_names ty in
-    case TypeChecker.tc_eval env level_names next_id (TypeChecker.check_main decl) of
-      Left tc_err -> throwE $ TypeCheckError tc_err "certify_declaration"
-      Right (cdecl,next) -> modify (\tc -> tc { m_next_id = next }) >> return cdecl
--}
