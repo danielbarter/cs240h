@@ -323,11 +323,10 @@ abstractLocals locals body = replaceInExpr (abstractLocalsFn locals) body
 mkProp :: Expr
 mkProp = mkSort mkZero
 
-innerBodyOfLambda :: Expr -> (Int, Expr)
-innerBodyOfLambda e = innerBodyOfLambdaCore 0 e where
-  innerBodyOfLambdaCore m e = case e of
-    Lambda lam -> innerBodyOfLambdaCore (m+1) (bindingBody lam)
-    _ -> (m, e)
+innerBodyOfLambda :: Expr -> Expr
+innerBodyOfLambda e = case e of
+    Lambda lam -> innerBodyOfLambda (bindingBody lam)
+    _ -> e
 
 isConstant :: Expr -> Bool
 isConstant (Constant _) = True

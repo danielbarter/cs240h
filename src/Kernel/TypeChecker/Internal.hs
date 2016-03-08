@@ -650,7 +650,7 @@ inductiveNormExt e = do
   guard $ length introArgs == numParams + (compRuleNumArgs compRule)
   guard $ length (constLevels elimOpConst) == length lpNames
   let rhsArgs = reverse ((take numACe elimArgs) ++ (take (compRuleNumArgs compRule) $ drop numParams introArgs))
-  let rhsBody = instantiateLevelParams (snd . innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
+  let rhsBody = instantiateLevelParams (innerBodyOfLambda . compRuleRHS $ compRule) lpNames (constLevels elimOpConst)
   let rhsBodyInstantiated = instantiateSeq rhsBody rhsArgs
   let extraArgs = drop (majorIdx + 1) elimArgs
   return $ mkAppSeq rhsBodyInstantiated extraArgs
