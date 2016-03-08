@@ -3,8 +3,9 @@ module Main where
 import Frontend.Parser
 
 import System.Environment
+import Data.List (isSuffixOf)
 
-printUsage = putStrLn "usage: leantc <filename>"
+printUsage = putStrLn "usage: leantc <filename>.[h]out"
 
 main = do
   args <- getArgs
@@ -12,7 +13,12 @@ main = do
     [] -> printUsage
     (_:_:_) -> printUsage
     [filename] -> do
-      fileContents <- readFile filename
-      case typeCheckExportFile filename fileContents of
-        Left err -> putStrLn err
-        Right _ -> putStrLn "Congratulations!"
+      let useStd = isSuffixOf ".out" filename
+      let useHott = isSuffixOf ".hout" filename
+      if useStd || useHott
+      then do
+        fileContents <- readFile filename
+        case typeCheckExportFile useStd filename fileContents of
+          Left err -> putStrLn err
+          Right _ -> putStrLn "Congratulations!"
+      else printUsage
