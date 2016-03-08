@@ -123,11 +123,11 @@ appSeqSpec =
       it "getAppArgs e = [] if e is not app" $ do
         (getAppArgs s) `shouldBe` []
 
-bodyOfLambdaSpec :: Spec
-bodyOfLambdaSpec =
+innerBodyOfLambdaSpec :: Spec
+innerBodyOfLambdaSpec =
   let c = mkConstant (mkName ["c"]) []
       e = mkLambdaDefault mkProp (mkLambdaDefault mkType c) in do
-    describe "bodyOfLambda" $ do
+    describe "innerBodyOfLambda" $ do
       it "should return body of nested lambdas" $ do
         (innerBodyOfLambda e) `shouldBe` c
       it "should do nothing on constants" $ do
@@ -141,4 +141,4 @@ spec = do
   instantiateSpec
   instantiateLevelParamsSpec
   appSeqSpec
-  bodyOfLambdaSpec
+  innerBodyOfLambdaSpec
