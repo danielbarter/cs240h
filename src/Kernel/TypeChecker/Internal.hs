@@ -369,13 +369,11 @@ whnfCore e = case e of
   App app -> do
     let (op, revArgs) = getAppOpRevArgs e
     op_n <- whnfCore op
-    {- TODO this is probably messed up -}
     case op_n of
       Lambda _ -> let (m, body) = bodyOfLambdaN (length revArgs) op_n
                       argsToInstantiate = drop (length revArgs - m) revArgs
                       remainingArgs = take (length revArgs - m) revArgs in
-                   if m > length revArgs then undefined else
-                     whnfCore (mkRevAppSeq (instantiateSeq body argsToInstantiate) remainingArgs)
+                   whnfCore (mkRevAppSeq (instantiateSeq body argsToInstantiate) remainingArgs)
       _ -> if op_n == op then return e else whnfCore (mkRevAppSeq op_n revArgs)
   _ -> return e
   where
