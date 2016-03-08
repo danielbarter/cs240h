@@ -5,10 +5,7 @@ import Kernel.Name.Internal
 import Kernel.Level.Internal
 import Kernel.Expr.Internal
 
---mkProp = mkSort mkZero
---mkLevelOne = mkSucc mkZero
 mkType = mkSort mkLevelOne
---mkLevelTwo = mkSucc mkLevelOne
 
 getFreeVarRangeSpec =
   let e1 = mkConstant (mkName ["c1"]) []
