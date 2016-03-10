@@ -517,11 +517,19 @@ lazyDeltaReductionStep t s = do
   (t_n, s_n, status) <-
     case (isDelta env t, isDelta env s) of
       (Nothing, Nothing) -> return (t, s, DefUnknown)
-      (Just d_t, _) -> (, s, Continue) <$> lift (unfoldNames t >>= whnfCore)
-      (_, Just d_s) -> (t, , Continue) <$> lift (unfoldNames s >>= whnfCore)
+      (Just d_t, Nothing) -> (, s, Continue) <$> lift (unfoldNames t >>= whnfCore)
+      (Nothing, Just d_s) -> (t, , Continue) <$> lift (unfoldNames s >>= whnfCore)
+      (Just d_t, Just d_s) -> case (t, s) of
+                                (App t_app, App s_app) -> isDefEqApp t s >> reduceBoth
+                                _ -> reduceBoth
   case status of
     DefUnknown -> return (t_n, s_n, DefUnknown)
     Continue -> quickIsDefEq t_n s_n >> return (t_n,s_n,Continue)
+    where
+      reduceBoth = do
+                t_n <- lift $ unfoldNames t >>= whnfCore
+                s_n <- lift $ unfoldNames s >>= whnfCore
+                return (t_n, s_n, Continue)
 
 {- | Throw true if 't' and 's' are definitionally equal because they are applications of the form
     '(f a_1 ... a_n)' and '(g b_1 ... b_n)', where 'f' and 'g' are definitionally equal, and
