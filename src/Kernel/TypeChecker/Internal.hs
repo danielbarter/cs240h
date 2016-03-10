@@ -92,8 +92,7 @@ data Decl = Decl {
   declName :: Name,
   declLPNames :: [Name],
   declType :: Expr,
-  declVal :: Maybe Expr,
-  declWeight :: Int
+  declVal :: Maybe Expr
   } deriving (Eq,Show)
 
 data Env = Env {
@@ -115,24 +114,13 @@ mkHottEnv = Env Map.empty Set.empty mkEmptyInductiveExt False True False False
 
 mkDefinition :: Env -> Name -> [Name] -> Expr -> Expr -> Decl
 mkDefinition env name levelParamNames ty val =
-  Decl name levelParamNames ty (Just val) (1 + getMaxDeclWeight env val)
+  Decl name levelParamNames ty (Just val)
 
 mkAxiom :: Name -> [Name] -> Expr -> Decl
-mkAxiom name lpNames ty = Decl name lpNames ty Nothing 0
+mkAxiom name lpNames ty = Decl name lpNames ty Nothing
 
 isDefinition :: Decl -> Bool
 isDefinition decl = Maybe.isJust $ declVal decl
-
-getMaxDeclWeight :: Env -> Expr -> Int
-getMaxDeclWeight env e = case e of
-  Var _ -> 0
-  Local local -> getMaxDeclWeight env (localType local)
-  Constant const -> maybe 0 declWeight (envLookupDecl (constName const) env)
-  Sort _ -> 0
-  Lambda lam -> getMaxDeclWeight env (bindingDomain lam) `max` getMaxDeclWeight env (bindingBody lam)
-  Pi pi -> getMaxDeclWeight env (bindingDomain pi) `max` getMaxDeclWeight env (bindingBody pi)
-  App app -> getMaxDeclWeight env (appFn app) `max` getMaxDeclWeight env (appArg app)
-
 
 envLookupDecl :: Name -> Env -> Maybe Decl
 envLookupDecl name  = Map.lookup name . view envDecls
@@ -240,7 +228,7 @@ checkDuplicatedParams = do
 checkValMatchesType :: Expr -> Expr -> TCMethod()
 checkValMatchesType ty val = do
   valTy <- inferType val
-  isDefEq valTy ty >>= flip tcAssert (TypeMismatchAtDef valTy ty)
+  isDefEq ty valTy >>= flip tcAssert (TypeMismatchAtDef ty valTy)
 
 checkClosed :: Expr -> TCMethod ()
 checkClosed e = tcAssert (not $ hasFreeVars e) (DeclHasFreeVars e)
@@ -350,7 +338,7 @@ whnf e =
       Just ty -> return ty
       Nothing -> do
         e_n <- do
-          e1 <- whnfCoreDelta 0 e
+          e1 <- whnfCoreDelta e
           e2Maybe <- normalizeExt e1
           case e2Maybe of
            Nothing -> return e1
@@ -358,11 +346,11 @@ whnf e =
         tcsWhnfCache %= Map.insert e e_n
         return e_n
 
-whnfCoreDelta :: Int -> Expr -> TCMethod Expr
-whnfCoreDelta w e = do
+whnfCoreDelta :: Expr -> TCMethod Expr
+whnfCoreDelta e = do
   e1 <- whnfCore e
-  e2 <- unfoldNames w e1
-  if e == e2 then return e else whnfCoreDelta w e2
+  e2 <- unfoldNames e1
+  if e == e2 then return e else whnfCoreDelta e2
 
 whnfCore :: Expr -> TCMethod Expr
 whnfCore e = case e of
@@ -385,22 +373,21 @@ whnfCore e = case e of
       Lambda lam | numArgs < maxArgs -> bodyOfLambdaNCore maxArgs (numArgs+1) (bindingBody lam)
       _ -> (numArgs, e)
 
-unfoldNames :: Int -> Expr -> TCMethod Expr
-unfoldNames w e = case e of
+unfoldNames :: Expr -> TCMethod Expr
+unfoldNames e = case e of
   App app -> let (op, args) = getAppOpArgs e in
-              flip mkAppSeq args <$> unfoldNameCore w op
-  _ -> unfoldNameCore w e
+              flip mkAppSeq args <$> unfoldNameCore op
+  _ -> unfoldNameCore e
 
-unfoldNameCore :: Int -> Expr -> TCMethod Expr
-unfoldNameCore w e = case e of
+unfoldNameCore :: Expr -> TCMethod Expr
+unfoldNameCore e = case e of
   Constant const -> do
     env <- asks _tcrEnv
     maybe (return e)
       (\d -> case declVal d of
           Just dVal
-            | declWeight d >= w && length (constLevels const) == length (declLPNames d)
-              -> unfoldNameCore w (instantiateLevelParams dVal (declLPNames d) $ constLevels const)
-          _ -> return e)
+            | length (constLevels const) == length (declLPNames d) -> unfoldNameCore (instantiateLevelParams dVal (declLPNames d) $ constLevels const)
+          Nothing -> return e)
       (envLookupDecl (constName const) env)
   _ -> return e
 
@@ -530,32 +517,11 @@ lazyDeltaReductionStep t s = do
   (t_n, s_n, status) <-
     case (isDelta env t, isDelta env s) of
       (Nothing, Nothing) -> return (t, s, DefUnknown)
-      (Just d_t, Nothing) -> (, s, Continue) <$> lift (unfoldNames 0 t >>= whnfCore)
-      (Nothing, Just d_s) -> (t, , Continue) <$> lift (unfoldNames 0 s >>= whnfCore)
-      (Just d_t, Just d_s) -> flip appendToPair Continue <$> lazyDeltaReductionStepHelper d_t d_s t s
+      (Just d_t, _) -> (, s, Continue) <$> lift (unfoldNames t >>= whnfCore)
+      (_, Just d_s) -> (t, , Continue) <$> lift (unfoldNames s >>= whnfCore)
   case status of
     DefUnknown -> return (t_n, s_n, DefUnknown)
     Continue -> quickIsDefEq t_n s_n >> return (t_n,s_n,Continue)
-
-lazyDeltaReductionStepHelper :: Decl -> Decl -> Expr -> Expr -> DefEqMethod (Expr,Expr)
-lazyDeltaReductionStepHelper d_t d_s t s = do
-  case compare (declWeight d_t) (declWeight d_s) of
-    LT -> (t, ) <$> lift (unfoldNames (declWeight d_t + 1) s >>= whnfCore)
-    GT -> (, s) <$> lift (unfoldNames (declWeight d_s + 1) t >>= whnfCore)
-    EQ ->
-      case (t,s) of
-        (App t_app, App s_app) -> do
-          {- Optimization: we try to check if their arguments are definitionally equal.
-             If they are, then t_n and s_n must be definitionally equal,
-             and we can skip the delta-reduction step. -}
-          isDefEqApp t s
-          reduceBoth
-        _ -> reduceBoth
-      where
-        reduceBoth = do
-          t_dn <- lift $ unfoldNames (declWeight d_s - 1) t >>= whnfCore
-          s_dn <- lift $ unfoldNames (declWeight d_t - 1) s >>= whnfCore
-          return (t_dn, s_dn)
 
 {- | Throw true if 't' and 's' are definitionally equal because they are applications of the form
     '(f a_1 ... a_n)' and '(g b_1 ... b_n)', where 'f' and 'g' are definitionally equal, and
