@@ -20,7 +20,7 @@ import Kernel.Name
 import qualified Kernel.Level as Level
 import Kernel.Expr
 
-import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~))
+import Lens.Simple (makeLenses, over, view, use, (.=), (%=), (<~), (%%=))
 
 type NodeRef = Int
 data DeqCache = DeqCache {
@@ -36,15 +36,13 @@ isEquiv :: Expr -> Expr -> DeqCache -> (Bool, DeqCache)
 isEquiv e1 e2 deqCache = flip runState deqCache $ do
   n1 <- toNode e1
   n2 <- toNode e2
-  (result, newDS) <- liftM (DS.equivalent n1 n2) $ use deqCacheDS
-  deqCacheDS .= newDS
-  return result
+  deqCacheDS %%= DS.equivalent n1 n2
 
 addEquiv :: Expr -> Expr -> DeqCache -> DeqCache
 addEquiv e1 e2 deqCache = flip execState deqCache $ do
   n1 <- toNode e1
   n2 <- toNode e2
-  deqCacheDS <~ (liftM (DS.union n1 n2) $ use deqCacheDS)
+  deqCacheDS %= DS.union n1 n2
 
 toNode :: Expr -> State DeqCache NodeRef
 toNode e = do
