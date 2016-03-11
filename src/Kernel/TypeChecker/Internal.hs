@@ -27,18 +27,9 @@ import Data.Map (Map)
 
 import qualified Data.Maybe as Maybe
 
-import Debug.Trace
-
 import Kernel.Name
 import Kernel.Level
 import Kernel.Expr
-
-import qualified Data.Maybe as Maybe
-
-import Debug.Trace
-
-debug msg = trace msg (return ())
-
 
 {- Inductive extension -}
 
@@ -395,7 +386,7 @@ normalizeExt e = runMaybeT (inductiveNormExt e `mplus` quotientNormExt e `mplus`
 gensym :: TCMethod Integer
 gensym = tcsNextId %%= \n -> (n, n + 1)
 
--- is_def_eq
+-- isDefEq
 
 isDefEq :: Expr -> Expr -> TCMethod Bool
 isDefEq t s = {-# SCC "isDefEq" #-} do
@@ -404,7 +395,7 @@ isDefEq t s = {-# SCC "isDefEq" #-} do
     Left answer -> return answer
     Right () -> return False
 
--- | If 'def_eq' short-circuits, then 'deqCommitTo deqFn' short-circuits with the same value, otherwise it shortcircuits with False.
+-- | If 'deqFn' short-circuits, then 'deqCommitTo deqFn' short-circuits with the same value, otherwise it shortcircuits with False.
 deqCommitTo :: DefEqMethod () -> DefEqMethod ()
 deqCommitTo deqFn = deqFn >> throwE False
 
@@ -689,14 +680,12 @@ hitsNormExt :: Expr -> MaybeT TCMethod Expr
 hitsNormExt e = do
   env <- asks _tcrEnv
   guard $ view envHitsEnabled env
-  debug "HIT enabled!"
   op <- liftMaybe $ maybeConstant (getOperator e)
   (mkPos, mkName, fPos) <- if constName op == truncRec then return (5, truncTr, 4) else
                              if constName op == quotientRec then return (5, quotientClassOf, 3) else
                                fail "no hit comp rule applies"
   args <- return $ getAppArgs e
   guard $ length args > mkPos
-  debug "HIT!"
   mk <- lift . whnf $ args !! mkPos
   case mk of
     App mkAsApp -> do
