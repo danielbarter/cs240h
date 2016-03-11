@@ -1,0 +1,383 @@
+\documentclass{article}
+% Change "article" to "report" to get rid of page number on title page
+\usepackage{amsmath,amsfonts,amsthm,amssymb}
+\usepackage{setspace}
+\usepackage{Tabbing}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{hyperref}
+\usepackage{extramarks}
+\usepackage{chngpage}
+\usepackage{soul,color}
+\usepackage{graphicx,float,wrapfig}
+\usepackage{listings}
+
+% In case you need to adjust margins:
+\topmargin=-0.45in      %
+\evensidemargin=0in     %
+\oddsidemargin=0in      %
+\textwidth=6.5in        %
+\textheight=9.0in       %
+\headsep=0.25in         %
+
+% Homework Specific Information
+\newcommand{\hmwkTitle}{Project Report}
+\newcommand{\hmwkDueDate}{}
+\newcommand{\hmwkClass}{CS240H: Functional Systems in Haskell}
+\newcommand{\hmwkClassTime}{}
+\newcommand{\hmwkClassInstructor}{Mazieres}
+\newcommand{\hmwkAuthorName}{Daniel Selsam}
+
+% Setup the header and footer
+\pagestyle{fancy}                                                       %
+\lhead{\hmwkAuthorName}                                                 %
+\chead{\hmwkClass\ (\hmwkClassInstructor\ \hmwkClassTime): \hmwkTitle}  %
+\rhead{\firstxmark}                                                     %
+\lfoot{\lastxmark}                                                      %
+\cfoot{}                                                                %
+\rfoot{Page\ \thepage\ of\ \pageref{LastPage}}                          %
+\renewcommand\headrulewidth{0.4pt}                                      %
+\renewcommand\footrulewidth{0.4pt}                                      %
+
+% This is used to trace down (pin point) problems
+% in latexing a document:
+%\tracingall
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Some tools
+%% \newcommand{\enterProblemHeader}[1]{\nobreak\extramarks{#1}{#1 continued on next page\ldots}\nobreak%
+%%                                     \nobreak\extramarks{#1 (continued)}{#1 continued on next page\ldots}\nobreak}%
+%% \newcommand{\exitProblemHeader}[1]{\nobreak\extramarks{#1 (continued)}{#1 continued on next page\ldots}\nobreak%
+%%                                    \nobreak\extramarks{#1}{}\nobreak}%
+
+%% \newlength{\labelLength}
+%% \newcommand{\labelAnswer}[2]
+%%   {\settowidth{\labelLength}{#1}%
+%%    \addtolength{\labelLength}{0.25in}%
+%%    \changetext{}{-\labelLength}{}{}{}%
+%%    \noindent\fbox{\begin{minipage}[c]{\columnwidth}#2\end{minipage}}%
+%%    \marginpar{\fbox{#1}}%
+
+%%    % We put the blank space above in order to make sure this
+%%    % \marginpar gets correctly placed.
+%%    \changetext{}{+\labelLength}{}{}{}}%
+
+%% \setcounter{secnumdepth}{0}
+%% \newcommand{\homeworkProblemName}{}%
+%% \newcounter{homeworkProblemCounter}%
+%% \newenvironment{homeworkProblem}[1][Problem \arabic{homeworkProblemCounter}]%
+%%   {\stepcounter{homeworkProblemCounter}%
+%%    \renewcommand{\homeworkProblemName}{#1}%
+%%    \section{\homeworkProblemName}%
+%%    \enterProblemHeader{\homeworkProblemName}}%
+%%   {\exitProblemHeader{\homeworkProblemName}}%
+
+%% \newcommand{\problemAnswer}[1]
+%%   {\noindent\fbox{\begin{minipage}[c]{\columnwidth}#1\end{minipage}}}%
+
+%% \newcommand{\problemLAnswer}[1]
+%%   {\labelAnswer{\homeworkProblemName}{#1}}
+
+%% \newcommand{\homeworkSectionName}{}%
+%% \newlength{\homeworkSectionLabelLength}{}%
+%% \newenvironment{homeworkSection}[1]%
+%%   {% We put this space here to make sure we're not connected to the above.
+%%    % Otherwise the changetext can do funny things to the other margin
+
+%%    \renewcommand{\homeworkSectionName}{#1}%
+%%    \settowidth{\homeworkSectionLabelLength}{\homeworkSectionName}%
+%%    \addtolength{\homeworkSectionLabelLength}{0.25in}%
+%%    \changetext{}{-\homeworkSectionLabelLength}{}{}{}%
+%%    \subsection{\homeworkSectionName}%
+%%    \enterProblemHeader{\homeworkProblemName\ [\homeworkSectionName]}}%
+%%   {\enterProblemHeader{\homeworkProblemName}%
+
+%%    % We put the blank space above in order to make sure this margin
+%%    % change doesn't happen too soon (otherwise \sectionAnswer's can
+%%    % get ugly about their \marginpar placement.
+%%    \changetext{}{+\homeworkSectionLabelLength}{}{}{}}%
+
+%% \newcommand{\sectionAnswer}[1]
+%%   {% We put this space here to make sure we're disconnected from the previous
+%%    % passage
+
+%%    \noindent\fbox{\begin{minipage}[c]{\columnwidth}#1\end{minipage}}%
+%%    \enterProblemHeader{\homeworkProblemName}\exitProblemHeader{\homeworkProblemName}%
+%%    \marginpar{\fbox{\homeworkSectionName}}%
+
+%%    % We put the blank space above in order to make sure this
+%%    % \marginpar gets correctly placed.
+%%    }%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Make title
+\title{\vspace{2in}\textmd{\textbf{\hmwkClass:\ \hmwkTitle}}\\\normalsize\vspace{0.1in}\small{Due\ on\ \hmwkDueDate}\\\vspace{0.1in}\large{\textit{\hmwkClassInstructor\ \hmwkClassTime}}\vspace{3in}}
+\date{}
+\author{\textbf{\hmwkAuthorName}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\begin{spacing}{1.1}
+\maketitle
+\newpage
+% Uncomment the \tableofcontents and \newpage lines to get a Contents page
+% Uncomment the \setcounter line as well if you do NOT want subsections
+%       listed in Contents
+%\setcounter{tocdepth}{1}
+%\tableofcontents
+%\newpage
+
+% When problems are long, it may be desirable to put a \newpage or a
+% \clearpage before each homeworkProblem environment
+
+\clearpage
+\section{Project Overview}
+
+I implemented a reference type checker for the Lean Theorem Prover~\cite{de2015lean}. Lean is an interactive theorem prover based on the Calculus of Inductive Contsructions (CIC), and is very similar to Coq. Lean itself is a tremendously complicated system. The user enters information in the form of highly ambiguous ``pre-terms'' that may require overloaded notation to be disambiguated, implicit (potentially higher-order) arguments to synthesized, coercions to be inserted, and even computation to be performed in order to construct complete terms in the core underlying logic. This process is called ``elaboration'' and is notoriously complex and byzantine, since the different kinds of ambiguity can interact with each other in global and unpredictable ways. Moreover, even the Lean proof-checker itself is substantially more complicated than correctness alone would require, because (a) it needs to be very performant since the user waits for it in real time, and (b) it needs to support some features that are only used by the elaborator and are irrelevant to the core underlying logic.
+
+One of Lean's primary purposes is to check the correctness of proofs, and all the complexity discussed above makes it hard to trust that Lean indeed only certifies proofs that are actually correct. One approach to increasing the trustworthiness of the system is to export the complete proof terms to a file and have an entirely self-contained executable that implements a minimal proof checker for the logic parse the export file and re-check the proofs. This is precisely what I have implemented for this project. An additional executable that renders the complete proof terms in ways that can be more easily read by humans would also be valuable, since ``un-elaborating'' is a vastly more straightforward process than elaborating, though I have not implemented such an ``un-elaborator''.
+
+\section{System Overview}
+
+The proofs are exported into a compact format described at \url{https://github.com/leanprover/lean/blob/master/doc/export_format.md}. The export file contains (a) a sequence of expressions that it internally refers to by unique integer ids, (b) a collection of inductive datatype declarations, and (c) a collection of definitions which consist of a name, an expression that represents the value, and an expression that represents the claimed type of the value in question. By the Curry-Howard Isomorphism, the same ``definition'' machinery is used to represent both functional programs and mathematical proofs. In the latter case, the value is the proof, and the type of the value is the theorem that the prove proves. Therefore the primary task of the reference type checker is to (a) infer the types of the proofs, and (b) confirm that the inferred types are definitionally equal to the claimed type.
+
+\subsection{Expressions}
+As discussed above, a Lean expression can represent (a) a functional program, (b) the type of a functional program, (c) a proof of a theorem, or (d) the statement of a theorem. We represent this expression type with a algebraic datatype in Haskell. The actual implementation puts all the constructor arguments inside constructor-specific types, so that we can let other modules pattern-match on expressions while caching some useful quantities transparently, and so has complexity that is not helpful when trying to understand what an expression is.  Here is a simplified form of the expression type:
+\begin{lstlisting}[language=Haskell]
+  data Expr = Var Int
+            | Local Name Expr
+            | Sort Level
+            | Constant Name [Level]
+            | Lambda Expr Expr
+            | Pi Expr Expr
+            | App Expr Exp
+\end{lstlisting}
+\begin{enumerate}
+  \item A \lstinline{Var} is a bound variable that includes its de-Bruijn index.
+  \item A \lstinline{Local} is a free variable that has a unique name and carries its type. We create these when we traverse under binders, so we do not need to weave a typing context around.
+  \item A \lstinline{Sort} is a type whose elements are types, and is usually denoted by the symbol \( \mathrm{Type} \). A \lstinline{Level} is a ``universe level'', and tracking them is a necessary evil in order to avoid Russell's Paradox. We will not discuss them futher, except to say that an element of type \( \mathrm{Prop} := \mathrm{Type}_0 \) is a theorem statement (a.k.a. a ``proposition''), and an element of type \( \mathrm{Type}_k \) for \( k > 0 \) is the type of a functional program.
+  \item A \lstinline{Constant} is a reference to a previously defined expression in the current environment.
+  \item A \lstinline{Lambda} is just a lambda abstraction, and takes the domain type and the body type.
+  \item A \lstinline{Pi} is a universal quantifier for propositions (i.e. \lstinline{forall}), and for programs is a (dependent) function type. Like a lambda abstraction, it takes the domain type and the body type. Note that a \lstinline{Pi} type for which the body does not depend on the binder can be thought of as an implication for propositions (e.g. \( A \to B \)) and as a regular function for programs. An example of a dependent function is the function that takes a natural number \( n \) to the zero-vector of length \( n \).
+  \item An \lstinline{App} is just a function application of one expression to another.
+\end{enumerate}
+
+\subsection{Type inference}
+
+Type inference is a fairly simple recursive function, for which we do not use any particularly interesting features of Haskell, so we do not discuss it here.
+
+\subsection{Definitional equality}
+
+In CIC, unlike in FOL, expressions have computational behavior associated with them. When two terms are equal upto computational behavior, we say they are \emph{definitionally} equal. There are many computation rules, many of which will be familiar to the reader. Here are some examples:
+\begin{enumerate}
+\item \( \beta \): \( (\lambda x, x + x) 5 \) is definitionally equal to \( 5 + 5 \).
+\item \( \eta \): \( (\lambda x, f x) \) is definitionally equal to \( f \).
+\item \( \delta \): If \( x := y \) is a definition in the environment, then \( f x \) is definitionally equal to \( f y \).
+\item \( \iota \): If \( H : a = a \) and \( x \) has type \( a \), then \( \mathrm{eq.rec\_on} H x \) is definitionally equal to \( x \). There are rules like this for every inductive type, which we discuss more below.
+\end{enumerate}
+
+One of the central tasks the reference type checker needs to solve is to determine if two terms are definitionally equal or not. Unfortunately, even though the computation rules are strongly normalizing, it would be too slow to normalize both expressions every time we need to check for equality. As a consequence, our definitional-equality test is much more complicated, and must lazily take computation steps and check for equality in order to avoid unnecessary computation. Moreover, we try many quick yet incomplete definitional equality checks as well. Since definitional equality is an equivalence relation, we also use a union-find data structure to cache the results. We discuss this function more below when we discuss the ``short-circuit'' monad.
+
+\subsection{Inductive datatypes}
+
+One of the most central and most celebrated features of the CIC is the support for inductive types. Inductive types present a way to define a new kind of object or judgment, to specify exactly how one can construct elements of said type, and to automatically get a way of definining functions on or proving theorems about elements of that type. Here is an example of an inductive type in a non-dependent subset of Lean that looks like it could be Haskell:
+
+\begin{lstlisting}[language=Haskell]
+inductive nat :=
+| zero : nat
+| succ : nat -> nat
+\end{lstlisting}
+
+This declaration gives us a new type \lstinline{nat} as well as two ways of constructing \lstinline{nat}s, as it would in Haskell. In addition. it gives us what is called a \emph{recursor} \lstinline{nat.rec} for \lstinline{nat}, which has the following form:
+\begin{lstlisting}[language=Haskell]
+Pi (C : nat -> Type),
+  C zero ->
+    (Pi (a : nat), C a -> C (succ a)) ->
+      (Pi (n : nat), C n)
+\end{lstlisting}
+The astute reader will recognize this as precisely the principle of mathematical induction for natural numbers. It also tells us how to define functions that take \lstinline{nat}s as an argument.
+
+Finally, the declaration gives us a computation rule for the recursor that does the obvious thing, to be used in \( \iota \)-reduction. Specifically,
+\begin{lstlisting}[language=Haskell]
+  nat.rec Czero Csucc zero ==> Czero
+  nat.rec Czero Csucc (succ n) ==> Csucc n (nat.rec Czero Csucc n)
+\end{lstlisting}
+
+For example, we can define the \lstinline{double} function as follows:
+\begin{lstlisting}[language=Haskell]
+definition double : nat -> nat := nat.rec zero (Lambda n dn, succ (succ (dn)))
+\end{lstlisting}
+
+It is the responsibility of the reference type checker to validate an inductive datatype declaration, to generate the recursor and to determine the appropriate computation rules. The general formulation of recursors for inductive types is rather complicated (and rather ingeneous) (see~\cite{dybjer1994inductive} for more details), and the implementation is correspondingly complex.
+
+\subsection{Evaluation}
+
+I used the reference type checker to verify all the proofs in the Lean standard library, which consists of over 10,000 definitions and almost 200 different inductive types. The entire process, including parsing, generating the recursors, inferring types and confirming definitional equality takes a little over thirty seconds on my machine. The reference type checker is sufficiently parameterizable that it can support Homotopy Type Theory (HoTT)~\cite{awodey2015homotopy} as well, and I also used it to verify all the proofs in the Lean HoTT library, which consists of almost 8,000 definitions and almost 200 different inductive types. The entire process takes about one minute and fifteen seconds on my machine.
+
+\section{Haskell in action}
+
+The rest of this report discusses interesting uses of Haskell in the reference type checker. First we discuss ``not-so-ugly'' idioms that recover abstractions standard in other languages without being unbearably ugly. Next we discuss ``beautiful'' idioms that qualitatively improve the simplicity and comprehensibility of parts of the program compared to how they would be implemented in more traditional languages.
+
+\subsection{Not-so-ugly Haskell}
+
+\subsubsection{Simple lenses}
+
+Although an earlier version contained some egregious code to make updates inside nested structures, I refactored after learning about lenses and now these sections are rather elegant. Here is a canonical example using \lstinline{over}:
+\begin{lstlisting}[language=Haskell]
+envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName)
+                                      (Map.insert irName indName)
+\end{lstlisting}
+
+The original code is too ugly to include in this report. Here is another example of a ``not-so-ugly'' line, inside a \lstinline{do} statement inside a \lstinline{State} monad computation:
+\begin{lstlisting}[language=Haskell]
+-- DS.equivalent :: Int -> Int -> (Bool, DS.IntDisjointSet)
+deqCacheDS %%= DS.equivalent n1 n2
+\end{lstlisting}
+This line (a) assigns the second argument to the lens \lstinline{deqCacheDS} and (b) returns the \lstinline{Bool} result. Without lenses, one would have needed to do something much uglier like the following:
+\begin{lstlisting}[language=Haskell]
+  let (result, newCache) = DS.equivalent n1 n2
+  modify (\deq -> deq { deqCacheDS = newCache })
+  return result
+\end{lstlisting}
+
+\subsubsection{Simulating objects with monad transformers}
+
+It is very useful to be able to execute some code in the context of some kind of state, some of which may be mutable and some of which may not be, and to be able to throw exceptions. This is a large part of the useful functionality provided by objects in C++. We simulate that in Haskell with monad transformers. Here is the type of ``methods'' on the ``TypeClass'' object:
+\begin{lstlisting}[language=Haskell]
+type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
+\end{lstlisting}
+
+We are essentially defining a \lstinline{TC} class that throws exceptions of type \lstinline{TypeError}, and has read-only state \lstinline{TypeCheckerR} and mutable state \lstinline{TypeCheckerS}. The monad transformers are very well designed and there are only a few points in the code where the stack is visible; most of the time all the usual functions for each of the three monad types in the stack do what we expect. The reason is that there are extra monad-like types being inferred by type class inference, such as \lstinline{MonadState}, upon which the important functions are defined. For example, the following line uses the \lstinline{MonadState} function \lstinline{uses} even though the outermost monad transformer is not \lstinline{StateT}:
+
+\begin{lstlisting}[language=Haskell]
+levels <- uses (addIndIDecl . indDeclLPNames) (map mkLevelParam)
+\end{lstlisting}
+
+\subsubsection{Using the ParsecT monad transformer}
+
+We want our parser to perform computations directly without needing to construct a parse tree explicitly. In an earlier design, the parser returned a \lstinline{ExceptT ExportError (S.State Context) a} computation that would be run independently. I found this approach did not quite clear the ``not-so-ugly'' bar, so I refactored to make the parser return \lstinline{()} but wrap the underlying monad directly.
+\begin{lstlisting}[language=Haskell]
+type ParserMethod = ParsecT String () (ExceptT ExportError (S.State Context))
+parseExportFile :: ParserMethod ()
+\end{lstlisting}
+
+Then each parser function parses as usual, and then lifts a computation in the underlying monad at the end. For example:
+\begin{lstlisting}[language=Haskell]
+  parseEV = do
+    newIdx <- parseInteger <* blank
+    string "#EV" >> blank
+    varIdx <- parseInt
+    lift $ do
+      use ctxExprMap >>= assertUndefined newIdx IdxExpr
+      ctxExprMap %= Map.insert newIdx (mkVar varIdx)
+\end{lstlisting}
+
+This seems natural to me.
+
+\subsection{Beautiful Haskell}
+
+Both of the Haskell gems we present involve monad transformers.
+
+\subsubsection{The short-circuit monad transformer}
+
+As we discussed above, there are many ways that one can prove that two terms are definitional equality. The C++ implementation of the definitional equality checker has many methods that return an element of a type with three elements in it: \lstinline{true}, \lstinline{false}, \lstinline{unknown}. There are many boiler plate lines that check if the result is not \lstinline{unknown}, and if it is not, returns the result.
+
+\begin{lstlisting}[language=C++]
+  lbool r = quick_is_def_eq(t, s, cs, use_hash);
+  if (r != l_undef) return to_bcs(r == l_true, cs);
+
+  expr t_n = whnf_core(t);
+  expr s_n = whnf_core(s);
+
+  if (!is_eqp(t_n, t) || !is_eqp(s_n, s)) {
+      r = quick_is_def_eq(t_n, s_n, cs);
+      if (r != l_undef) return to_bcs(r == l_true, cs);
+  }
+
+  r = reduce_def_eq(t_n, s_n, cs);
+  if (r != l_undef) return to_bcs(r == l_true, cs);
+\end{lstlisting}
+
+In my Haskell implementation, I used the \lstinline{ExceptT} monad transformer to allow ``short-circuiting'' behavior, so that the return value need not be checked every time. In particular, if a function would have returned \lstinline{true} or \lstinline{false}, it simply calls \lstinline{throwE true} or \lstinline{throwE false} accordingly, and if it would have returned \lstinline{unknown}, then it simply returns without throwing an exception. The resulting code is much easier to follow:
+
+\begin{lstlisting}[language=Haskell]
+  do quickIsDefEq t s
+     t_n <- lift $ whnfCore t
+     s_n <- lift $ whnfCore s
+     deqTryIf (t_n /= t || s_n /= s) $ quickIsDefEq t_n s_n
+     (t_nn, s_nn) <- reduceDefEq t_n s_n
+\end{lstlisting}
+
+where we define the combinator
+\begin{lstlisting}[language=Haskell]
+deqTryIf :: Bool -> DefEqMethod () -> DefEqMethod ()
+deqTryIf b check = if b then check else return ()
+\end{lstlisting}
+
+Note that the \lstinline{lift} is necessary to lift non-short-circuiting computations into the ``short-circuit'' monad. I wrote many other useful combinators as well, such as
+\begin{lstlisting}[language=Haskell]
+deqCommitTo :: DefEqMethod () -> DefEqMethod ()
+deqCommitTo deqFn = deqFn >> throwE False
+
+deqTryAnd :: [DefEqMethod ()] -> DefEqMethod ()
+deqTryAnd [] = throwE True
+deqTryAnd (deqFn:deqFns) = do
+  success <- lift $ runExceptT deqFn
+  case success of
+    Left True -> deqTryAnd deqFns
+    _ -> return ()
+
+deqTryOr :: [DefEqMethod ()] -> DefEqMethod ()
+deqTryOr [] = return ()
+deqTryOr (defFn:defFns) = do
+  success <- lift $ runExceptT defFn
+  case success of
+    Left True -> throwE True
+    _ -> deqTryOr defFns
+\end{lstlisting}
+and as a result, the code is much cleaner and easier to follow.
+
+\subsubsection{The Maybe monad transformer}
+
+A similar issue comes up when, if any of a sequence of computations fails to produce a result, the entire function fails to produce a result. This functionality is usually acheived in traditional languages by checking and possibly failing after each such function call, but in Haskell can be captured elegantly using the \lstinline{MaybeT} transformer.
+
+The following is a (slightly simplified) excerpt from the Lean kernel in C++:
+\begin{lstlisting}[language=C++]
+if (!is_constant(app_type_I) ||
+    const_name(app_type_I) != it->m_inductive_name)
+    return none_ecs();
+auto new_intro_app = mk_nullary_intro(env, app_type, it->m_num_params);
+if (!new_intro_app)
+    return none_ecs();
+expr new_type    = ctx.infer_type(*new_intro_app);
+if (has_expr_metavar(new_type))
+    return none_ecs();
+if (!ctx.is_def_eq(app_type, new_type))
+    return none_ecs();
+return some_ecs(*new_intro_app);
+\end{lstlisting}
+
+which we can write in Haskell as follows:
+
+\begin{lstlisting}[language=Haskell]
+appTypeOpConst <- liftMaybe $ maybeConstant appTypeOp
+guard (constName appTypeOpConst == elimInfoIndName einfo)
+newIntroApp <- liftMaybe (mkNullaryIntro env
+                                         appType
+                                         (elimInfoNumParams einfo))
+newType <- lift $ inferType newIntroApp
+(lift $ isDefEq appType newType) >>= guard
+return newIntroApp
+\end{lstlisting}
+
+\end{spacing}
+
+\bibliographystyle{alpha}
+\bibliography{report}
+
+\end{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
