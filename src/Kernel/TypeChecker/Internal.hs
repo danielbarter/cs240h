@@ -32,8 +32,6 @@ import Debug.Trace
 import Kernel.Name
 import Kernel.Level
 import Kernel.Expr
-import qualified Kernel.DeqCache as DeqCache
-import Kernel.DeqCache (DeqCache, mkDeqCache)
 
 import qualified Data.Maybe as Maybe
 
@@ -171,7 +169,6 @@ makeLenses ''TypeCheckerR
 
 data TypeCheckerS = TypeCheckerS {
   _tcsNextId :: Integer,
-  _tcsDeqCache :: DeqCache,
   _tcsInferTypeCache :: Map Expr Expr,
   _tcsWhnfCache :: Map Expr Expr
   }
@@ -182,7 +179,7 @@ mkTypeCheckerR :: Env -> [Name] -> TypeCheckerR
 mkTypeCheckerR env levelParamNames  = TypeCheckerR env levelParamNames
 
 mkTypeCheckerS :: Integer -> TypeCheckerS
-mkTypeCheckerS nextId = TypeCheckerS nextId mkDeqCache Map.empty Map.empty
+mkTypeCheckerS nextId = TypeCheckerS nextId Map.empty Map.empty
 
 type TCMethod = ExceptT TypeError (StateT TypeCheckerS (Reader TypeCheckerR))
 
@@ -402,7 +399,7 @@ gensym = tcsNextId %%= \n -> (n, n + 1)
 
 isDefEq :: Expr -> Expr -> TCMethod Bool
 isDefEq t s = {-# SCC "isDefEq" #-} do
-  success <- runExceptT (isDefEqMain t s)
+  success <- runExceptT (isDefEqCore t s)
   case success of
     Left answer -> return answer
     Right () -> return False
@@ -437,15 +434,6 @@ deqAssert b err = lift $ tcAssert b err
 -- | 'deqTryIf b check' tries 'check' only if 'b' is true, otherwise does nothing.
 deqTryIf :: Bool -> DefEqMethod () -> DefEqMethod ()
 deqTryIf b check = if b then check else return ()
-
--- | Wrapper to add successes to the cache
-isDefEqMain :: Expr -> Expr -> DefEqMethod ()
-isDefEqMain t s = do
-  success <- lift $ runExceptT (isDefEqCore t s)
-  case success of
-    Left True -> deqCacheAddEquiv t s >> throwE True
-    Left False -> throwE False
-    Right () -> return ()
 
 isDefEqCore :: Expr -> Expr -> DefEqMethod ()
 isDefEqCore t s = do
@@ -533,9 +521,9 @@ lazyDeltaReductionStep t s = do
 -}
 isDefEqApp :: Expr -> Expr -> DefEqMethod ()
 isDefEqApp t s =
-  deqTryAnd [isDefEqMain (getOperator t) (getOperator s),
+  deqTryAnd [isDefEqCore (getOperator t) (getOperator s),
                throwE (length (getAppArgs t) == length (getAppArgs s)),
-               mapM_ (uncurry isDefEqMain) (zip (getAppArgs t) (getAppArgs s))]
+               mapM_ (uncurry isDefEqCore) (zip (getAppArgs t) (getAppArgs s))]
 
 isDefEqEta :: Expr -> Expr -> DefEqMethod ()
 isDefEqEta t s = deqTryOr [isDefEqEtaCore t s, isDefEqEtaCore s t]
@@ -549,7 +537,7 @@ isDefEqEtaCore t s = go t s where
     s_ty_n <- lift $ inferType s >>= whnf
     case s_ty_n of
       Pi pi -> let new_s = mkLambda (bindingName pi) (bindingDomain pi) (mkApp s (mkVar 0)) (bindingInfo pi) in
-                deqCommitTo (isDefEqMain t new_s)
+                deqCommitTo (isDefEqCore t new_s)
       _ -> throwE False
   go _ _ = throwE False
 
@@ -565,11 +553,10 @@ isDefEqProofIrrel t s = do
   t_ty_is_prop <- lift $ isProp t_ty
   deqTryIf t_ty_is_prop $ do
     s_ty <- lift $ inferType s
-    isDefEqMain t_ty s_ty
+    isDefEqCore t_ty s_ty
 
 quickIsDefEq :: Expr -> Expr -> DefEqMethod ()
 quickIsDefEq t s = do
-  deqCacheIsEquiv t s
   case (t, s) of
     (Lambda lam1, Lambda lam2) -> deqCommitTo (isDefEqBinding lam1 lam2)
     (Pi pi1, Pi pi2) -> deqCommitTo (isDefEqBinding pi1 pi2)
@@ -579,22 +566,12 @@ quickIsDefEq t s = do
 -- | Given lambda/Pi expressions 't' and 's', return true iff 't' is def eq to 's', which holds iff 'domain(t)' is definitionally equal to 'domain(s)' and 'body(t)' is definitionally equal to 'body(s)'
 isDefEqBinding :: BindingData -> BindingData -> DefEqMethod ()
 isDefEqBinding bind1 bind2 = do
-  deqTryAnd  [(isDefEqMain (bindingDomain bind1) (bindingDomain bind2)),
+  deqTryAnd  [(isDefEqCore (bindingDomain bind1) (bindingDomain bind2)),
                 do local <- lift $ Local <$> mkLocalFor bind1
-                   isDefEqMain (instantiate (bindingBody bind1) local) (instantiate (bindingBody bind2) local)]
+                   isDefEqCore (instantiate (bindingBody bind1) local) (instantiate (bindingBody bind2) local)]
 
 isDefEqLevels :: [Level] -> [Level] -> Bool
 isDefEqLevels ls1 ls2 = all (uncurry levelEquiv) (zip ls1 ls2)
-
-deqCacheAddEquiv :: Expr -> Expr -> DefEqMethod ()
-deqCacheAddEquiv e1 e2 = {-# SCC "deqCacheAddEquiv" #-} tcsDeqCache %= DeqCache.addEquiv e1 e2
-
-deqCacheIsEquiv :: Expr -> Expr -> DefEqMethod ()
-deqCacheIsEquiv e1 e2 = {-# SCC "deqCacheIsEquiv" #-} do
-  deqCache <- use tcsDeqCache
-  let (isEquiv, newDeqCache) = DeqCache.isEquiv e1 e2 deqCache
-  tcsDeqCache .= newDeqCache
-  if isEquiv then throwE True else return ()
 
 {- extensions -}
 
