@@ -1,7 +1,7 @@
 {-|
 Module      : Kernel.TypeChecker
 Description : Type checker
-Copyright   : (c) Daniel Selsam, 2015
+Copyright   : (c) Daniel Selsam, 2016
 License     : GPL-3
 Maintainer  : daniel.selsam@gmail.com
 
