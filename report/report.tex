@@ -23,15 +23,15 @@
 % Homework Specific Information
 \newcommand{\hmwkTitle}{Project Report}
 \newcommand{\hmwkDueDate}{}
-\newcommand{\hmwkClass}{CS240H: Functional Systems in Haskell}
+\newcommand{\hmwkClass}{CS240H}
 \newcommand{\hmwkClassTime}{}
-\newcommand{\hmwkClassInstructor}{Mazieres}
+\newcommand{\hmwkClassInstructor}{David Mazi\`{e}res}
 \newcommand{\hmwkAuthorName}{Daniel Selsam}
 
 % Setup the header and footer
 \pagestyle{fancy}                                                       %
 \lhead{\hmwkAuthorName}                                                 %
-\chead{\hmwkClass\ (\hmwkClassInstructor\ \hmwkClassTime): \hmwkTitle}  %
+\chead{\hmwkClass: \hmwkTitle}  %
 \rhead{\firstxmark}                                                     %
 \lfoot{\lastxmark}                                                      %
 \cfoot{}                                                                %
@@ -114,7 +114,7 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Make title
-\title{\vspace{2in}\textmd{\textbf{\hmwkClass:\ \hmwkTitle}}\\\normalsize\vspace{0.1in}\small{Due\ on\ \hmwkDueDate}\\\vspace{0.1in}\large{\textit{\hmwkClassInstructor\ \hmwkClassTime}}\vspace{3in}}
+\title{\vspace{2in}\textmd{\textbf{\hmwkClass:\ \hmwkTitle}}\\\normalsize\vspace{0.1in}\\\vspace{0.1in}\vspace{3in}}
 \date{}
 \author{\textbf{\hmwkAuthorName}}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -142,7 +142,7 @@ One of Lean's primary purposes is to check the correctness of proofs, and all th
 
 \section{System Overview}
 
-The proofs are exported into a compact format described at \url{https://github.com/leanprover/lean/blob/master/doc/export_format.md}. The export file contains (a) a sequence of expressions that it internally refers to by unique integer ids, (b) a collection of inductive datatype declarations, and (c) a collection of definitions which consist of a name, an expression that represents the value, and an expression that represents the claimed type of the value in question. By the Curry-Howard Isomorphism, the same ``definition'' machinery is used to represent both functional programs and mathematical proofs. In the latter case, the value is the proof, and the type of the value is the theorem that the prove proves. Therefore the primary task of the reference type checker is to (a) infer the types of the proofs, and (b) confirm that the inferred types are definitionally equal to the claimed type.
+The proofs are exported into a compact format described at \url{https://github.com/leanprover/lean/blob/master/doc/export_format.md}. The export file contains (a) a sequence of expressions that it internally refers to by unique integer ids, (b) a collection of inductive datatype declarations, and (c) a collection of definitions which consist of a name, an expression that represents the value, and an expression that represents the claimed type of the value in question. By the Curry-Howard Isomorphism, the same ``definition'' machinery is used to represent both functional programs and mathematical proofs. In the latter case, the value is the proof, and the type of the value is the theorem that the proof proves. Therefore the primary task of the reference type checker is to (a) infer the types of the proofs, and (b) confirm that the inferred types are definitionally equal to the claimed type.
 
 \subsection{Expressions}
 As discussed above, a Lean expression can represent (a) a functional program, (b) the type of a functional program, (c) a proof of a theorem, or (d) the statement of a theorem. We represent this expression type with a algebraic datatype in Haskell. The actual implementation puts all the constructor arguments inside constructor-specific types, so that we can let other modules pattern-match on expressions while caching some useful quantities transparently, and so has complexity that is not helpful when trying to understand what an expression is.  Here is a simplified form of the expression type:
@@ -162,7 +162,7 @@ As discussed above, a Lean expression can represent (a) a functional program, (b
   \item A \lstinline{Constant} is a reference to a previously defined expression in the current environment.
   \item A \lstinline{Lambda} is just a lambda abstraction, and takes the domain type and the body type.
   \item A \lstinline{Pi} is a universal quantifier for propositions (i.e. \lstinline{forall}), and for programs is a (dependent) function type. Like a lambda abstraction, it takes the domain type and the body type. Note that a \lstinline{Pi} type for which the body does not depend on the binder can be thought of as an implication for propositions (e.g. \( A \to B \)) and as a regular function for programs. An example of a dependent function is the function that takes a natural number \( n \) to the zero-vector of length \( n \).
-  \item An \lstinline{App} is just a function application of one expression to another.
+  \item An \lstinline{App} is an function application of one expression (that encodes a function) to another.
 \end{enumerate}
 
 \subsection{Type inference}
@@ -176,14 +176,14 @@ In CIC, unlike in FOL, expressions have computational behavior associated with t
 \item \( \beta \): \( (\lambda x, x + x) 5 \) is definitionally equal to \( 5 + 5 \).
 \item \( \eta \): \( (\lambda x, f x) \) is definitionally equal to \( f \).
 \item \( \delta \): If \( x := y \) is a definition in the environment, then \( f x \) is definitionally equal to \( f y \).
-\item \( \iota \): If \( H : a = a \) and \( x \) has type \( a \), then \( \mathrm{eq.rec\_on} H x \) is definitionally equal to \( x \). There are rules like this for every inductive type, which we discuss more below.
+\item \( \iota \): If \( H : A = A \) and \( a \) has type \( A \), then \lstinline{eq.rec a H} is definitionally equal to \( a \) (note that are are hiding some implicit arguments). There are rules like this for every inductive type, which we discuss more below.
 \end{enumerate}
 
-One of the central tasks the reference type checker needs to solve is to determine if two terms are definitionally equal or not. Unfortunately, even though the computation rules are strongly normalizing, it would be too slow to normalize both expressions every time we need to check for equality. As a consequence, our definitional-equality test is much more complicated, and must lazily take computation steps and check for equality in order to avoid unnecessary computation. Moreover, we try many quick yet incomplete definitional equality checks as well. Since definitional equality is an equivalence relation, we also use a union-find data structure to cache the results. We discuss this function more below when we discuss the ``short-circuit'' monad.
+One of the central tasks the reference type checker needs to solve is to determine if two terms are definitionally equal or not. Unfortunately, even though the computation rules are strongly normalizing, it would be too slow to normalize both expressions every time we need to check for equality. As a consequence, our definitional-equality test is much more complicated, and must lazily take computation steps and check for equality in order to avoid unnecessary computation. Moreover, we try many quick yet incomplete definitional equality checks as well. We discuss this function more below when we discuss the ``short-circuit'' monad.
 
 \subsection{Inductive datatypes}
 
-One of the most central and most celebrated features of the CIC is the support for inductive types. Inductive types present a way to define a new kind of object or judgment, to specify exactly how one can construct elements of said type, and to automatically get a way of definining functions on or proving theorems about elements of that type. Here is an example of an inductive type in a non-dependent subset of Lean that looks like it could be Haskell:
+One of the most central and most celebrated features of the CIC is the support for inductive types. Inductive types present a way to define a new kind of object or judgment, to specify exactly how one can construct elements of said type, and to specify what is required to definine functions on or proving theorems about elements of that type. Here is an example of an inductive type in a non-dependent subset of Lean that looks like it could be Haskell:
 
 \begin{lstlisting}[language=Haskell]
 inductive nat :=
@@ -197,8 +197,8 @@ Pi (C : nat -> Type),
   C zero ->
     (Pi (a : nat), C a -> C (succ a)) ->
       (Pi (n : nat), C n)
-\end{lstlisting}
-The astute reader will recognize this as precisely the principle of mathematical induction for natural numbers. It also tells us how to define functions that take \lstinline{nat}s as an argument.
+\end{lstlisting}[language=Haskell]
+The astute reader will recognize this as precisely the principle of mathematical induction for natural numbers. The recursor also tells us how to define functions that take \lstinline{nat}s as an argument.
 
 Finally, the declaration gives us a computation rule for the recursor that does the obvious thing, to be used in \( \iota \)-reduction. Specifically,
 \begin{lstlisting}[language=Haskell]
@@ -208,14 +208,15 @@ Finally, the declaration gives us a computation rule for the recursor that does 
 
 For example, we can define the \lstinline{double} function as follows:
 \begin{lstlisting}[language=Haskell]
-definition double : nat -> nat := nat.rec zero (Lambda n dn, succ (succ (dn)))
+definition double : nat -> nat :=
+  nat.rec zero (Lambda n dn, succ (succ (dn)))
 \end{lstlisting}
 
-It is the responsibility of the reference type checker to validate an inductive datatype declaration, to generate the recursor and to determine the appropriate computation rules. The general formulation of recursors for inductive types is rather complicated (and rather ingeneous) (see~\cite{dybjer1994inductive} for more details), and the implementation is correspondingly complex.
+It is the responsibility of the reference type checker to validate an inductive datatype declaration, to generate the recursor and to determine the appropriate computation rules. The general formulation of recursors for inductive types is rather complicated (and rather ingeneous---see~\cite{dybjer1994inductive} for details), and the implementation is correspondingly complex.
 
 \subsection{Evaluation}
 
-I used the reference type checker to verify all the proofs in the Lean standard library, which consists of over 10,000 definitions and almost 200 different inductive types. The entire process, including parsing, generating the recursors, inferring types and confirming definitional equality takes a little over thirty seconds on my machine. The reference type checker is sufficiently parameterizable that it can support Homotopy Type Theory (HoTT)~\cite{awodey2015homotopy} as well, and I also used it to verify all the proofs in the Lean HoTT library, which consists of almost 8,000 definitions and almost 200 different inductive types. The entire process takes about one minute and fifteen seconds on my machine.
+I used the reference type checker to verify all the proofs in the Lean standard library, which consists of over 10,000 definitions and almost 200 different inductive types. The entire process, including parsing, generating the recursors, inferring types and confirming definitional equality takes a little over thirty seconds on my machine. The reference type checker is sufficiently parameterizable that it can support Homotopy Type Theory (HoTT)~\cite{awodey2015homotopy} as well, and I also used it to verify all the proofs in the Lean HoTT library, which consists of almost 8,000 definitions and almost 200 different inductive types. The entire process for the HoTT library takes about one minute and fifteen seconds on my machine.
 
 \section{Haskell in action}
 
@@ -231,7 +232,7 @@ envAddIntroRule irName indName = over (envIndExt . indExtIntroNameToIndName)
                                       (Map.insert irName indName)
 \end{lstlisting}
 
-The original code is too ugly to include in this report. Here is another example of a ``not-so-ugly'' line, inside a \lstinline{do} statement inside a \lstinline{State} monad computation:
+The original code is too ugly to include in this report. Here is another example of a ``not-so-ugly'' line, inside a \lstinline{do} statement inside a \lstinline{State} monad computation\footnote{Note that we recently removed the entire module that this excerpt came from, since it added unnecessary complexity}:
 \begin{lstlisting}[language=Haskell]
 -- DS.equivalent :: Int -> Int -> (Bool, DS.IntDisjointSet)
 deqCacheDS %%= DS.equivalent n1 n2
@@ -283,7 +284,7 @@ Both of the Haskell gems we present involve monad transformers.
 
 \subsubsection{The short-circuit monad transformer}
 
-As we discussed above, there are many ways that one can prove that two terms are definitional equality. The C++ implementation of the definitional equality checker has many methods that return an element of a type with three elements in it: \lstinline{true}, \lstinline{false}, \lstinline{unknown}. There are many boiler plate lines that check if the result is not \lstinline{unknown}, and if it is not, returns the result.
+As we discussed above, there are many ways that one can prove that two terms are definitional equality. The C++ implementation of the definitional equality checker has many methods that return an element of an enum type of size three: \lstinline{true}, \lstinline{false}, \lstinline{unknown}. There are many boiler plate lines that check if the result is not \lstinline{unknown}, and if it is not, returns the result.
 
 \begin{lstlisting}[language=C++]
   lbool r = quick_is_def_eq(t, s, cs, use_hash);
@@ -340,7 +341,7 @@ deqTryOr (defFn:defFns) = do
 \end{lstlisting}
 and as a result, the code is much cleaner and easier to follow.
 
-\subsubsection{The Maybe monad transformer}
+\subsubsection{The MaybeT monad transformer}
 
 A similar issue comes up when, if any of a sequence of computations fails to produce a result, the entire function fails to produce a result. This functionality is usually acheived in traditional languages by checking and possibly failing after each such function call, but in Haskell can be captured elegantly using the \lstinline{MaybeT} transformer.
 
