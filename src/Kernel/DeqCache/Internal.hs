@@ -10,6 +10,7 @@ Union-find for caching isDefEq
 {-# LANGUAGE TemplateHaskell #-}
 module Kernel.DeqCache.Internal where
 
+
 import qualified Data.IntDisjointSet as DS
 import Control.Monad.State
 
@@ -36,13 +37,13 @@ isEquiv :: Expr -> Expr -> DeqCache -> (Bool, DeqCache)
 isEquiv e1 e2 deqCache = flip runState deqCache $ do
   n1 <- toNode e1
   n2 <- toNode e2
-  deqCacheDS %%= DS.equivalent n1 n2
+  {-# SCC "DS.Equiv" #-} deqCacheDS %%= DS.equivalent n1 n2
 
 addEquiv :: Expr -> Expr -> DeqCache -> DeqCache
 addEquiv e1 e2 deqCache = flip execState deqCache $ do
   n1 <- toNode e1
   n2 <- toNode e2
-  deqCacheDS %= DS.union n1 n2
+  {-# SCC "DS.Union" #-} deqCacheDS %= DS.union n1 n2
 
 toNode :: Expr -> State DeqCache NodeRef
 toNode e = do
@@ -51,6 +52,6 @@ toNode e = do
     Just n -> return n
     Nothing -> do
       n <- liftM DS.size $ use deqCacheDS
-      deqCacheDS %= DS.insert n
+      {-# SCC "DS.Insert" #-} deqCacheDS %= DS.insert n
       deqCacheMap %= Map.insert e n
       return n

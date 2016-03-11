@@ -133,7 +133,7 @@ parseExportFile = sepEndBy1 parseStatement newline >> eof
         lpNames <- uses ctxNameMap (\m -> map (m Map.!) lpNameIdxs)
         indType <- uses ctxExprMap (Map.! indTypeIdx)
         ctxIndId += 1
-        use ctxIndId >>= (\did -> trace ("Ind(" ++ show did ++ "): " ++ show indName) (return ()))
+        use ctxIndId >>= (\did -> trace ("IND(" ++ show did ++ "): " ++ show indName) (return ()))
         env <- use ctxEnv
         case addInductive env (IndDecl numParams lpNames indName indType introRules) of
           Left err -> throwE $ IDeclError err
