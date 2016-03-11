@@ -263,7 +263,7 @@ ensurePi e = case e of
 {- Infer type -}
 
 inferType :: Expr -> TCMethod Expr
-inferType e = do
+inferType e = {-# SCC "inferType" #-} do
   checkClosed e
   inferTypeCache <- use tcsInferTypeCache
   case Map.lookup e inferTypeCache of
@@ -326,7 +326,7 @@ inferApp app = do
 {- Weak-head normal form (whnf) -}
 
 whnf :: Expr -> TCMethod Expr
-whnf e =
+whnf e = {-# SCC "whnf" #-}
   case e of
    Var _ -> return e
    Sort _ -> return e
@@ -401,7 +401,7 @@ gensym = tcsNextId %%= \n -> (n, n + 1)
 -- is_def_eq
 
 isDefEq :: Expr -> Expr -> TCMethod Bool
-isDefEq t s = do
+isDefEq t s = {-# SCC "isDefEq" #-} do
   success <- runExceptT (isDefEqMain t s)
   case success of
     Left answer -> return answer
@@ -587,10 +587,10 @@ isDefEqLevels :: [Level] -> [Level] -> Bool
 isDefEqLevels ls1 ls2 = all (uncurry levelEquiv) (zip ls1 ls2)
 
 deqCacheAddEquiv :: Expr -> Expr -> DefEqMethod ()
-deqCacheAddEquiv e1 e2 = tcsDeqCache %= DeqCache.addEquiv e1 e2
+deqCacheAddEquiv e1 e2 = {-# SCC "deqCacheAddEquiv" #-} tcsDeqCache %= DeqCache.addEquiv e1 e2
 
 deqCacheIsEquiv :: Expr -> Expr -> DefEqMethod ()
-deqCacheIsEquiv e1 e2 = do
+deqCacheIsEquiv e1 e2 = {-# SCC "deqCacheIsEquiv" #-} do
   deqCache <- use tcsDeqCache
   let (isEquiv, newDeqCache) = DeqCache.isEquiv e1 e2 deqCache
   tcsDeqCache .= newDeqCache
