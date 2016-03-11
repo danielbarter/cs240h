@@ -661,8 +661,7 @@ toIntroWhenK einfo e = do
   guard (constName appTypeOpConst == elimInfoIndName einfo)
   newIntroApp <- liftMaybe $ mkNullaryIntro env appType (elimInfoNumParams einfo)
   newType <- lift $ inferType newIntroApp
-  typesEq <- lift $ isDefEq appType newType
-  guard typesEq
+  (lift $ isDefEq appType newType) >>= guard
   return newIntroApp
 
 -- | If 'op_name' is the name of a non-empty inductive datatype, then return the
