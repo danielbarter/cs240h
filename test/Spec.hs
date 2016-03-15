@@ -7,8 +7,9 @@ import qualified TypeCheckerSpec
 import qualified Integration
 
 main :: IO ()
-main = hspec $ do
-  LevelSpec.spec
-  ExprSpec.spec
-  TypeCheckerSpec.spec
+main = do
   Integration.test
+  hspec $ do
+    LevelSpec.spec
+    ExprSpec.spec
+    TypeCheckerSpec.spec
