@@ -411,11 +411,11 @@ deqTryAnd (deqFn:deqFns) = do
 -- | 'deqTryOr' proceeds through its arguments, and short-circuits with True if any of its arguments short-circuit with True, otherwise it does nothing.
 deqTryOr :: [DefEqMethod ()] -> DefEqMethod ()
 deqTryOr [] = return ()
-deqTryOr (defFn:defFns) = do
-  success <- lift $ runExceptT defFn
+deqTryOr (deqFn:deqFns) = do
+  success <- lift $ runExceptT deqFn
   case success of
     Left True -> throwE True
-    _ -> deqTryOr defFns
+    _ -> deqTryOr deqFns
 
 -- This exception means we know if they are equal or not
 type DefEqMethod = ExceptT Bool TCMethod
