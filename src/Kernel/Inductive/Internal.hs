@@ -73,8 +73,6 @@ data ElimInfo = ElimInfo {
 makeLenses ''ElimInfo
 
 data AddInductiveS = AddInductiveS {
-  -- TODO(dhs): much better to put these all in a different structure and populate them at once
-  -- (or possibly into a few different ones if they are populated at different stages)
   _addIndEnv :: Env,
   _addIndIDecl :: IndDecl,
 
@@ -120,7 +118,6 @@ mkAddInductiveS env idecl = AddInductiveS {
 type AddInductiveMethod = ExceptT IndDeclError (State AddInductiveS)
 
 {- Misc -}
--- TODO(dhs): put these at the bottom
 
 gensym :: AddInductiveMethod Integer
 gensym = addIndNextId %%= \n -> (n, n + 1)
@@ -525,7 +522,7 @@ mkCompRule indName (IntroRule irName irType) minorPremise = do
   recApps <- constructRecApps recArgs
   let compRHS0 = mkAppSeq (mkAppSeq (mkAppSeq (Local minorPremise)
                                      (map Local nonRecArgs))
-                           (map Local recArgs)) recApps -- TODO(dhs): confirm
+                           (map Local recArgs)) recApps
   let compRHS1 = abstractLambdaSeq paramLocals
                  (abstractLambda c
                   (abstractLambdaSeq minorPremises

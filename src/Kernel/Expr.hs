@@ -26,7 +26,6 @@ module Kernel.Expr (
   , findInExpr
   , isConstant, maybeConstant
   , innerBodyOfLambda
-   -- TODO(dhs): need to expose more!
   , mkProp
   ) where
 import Kernel.Expr.Internal

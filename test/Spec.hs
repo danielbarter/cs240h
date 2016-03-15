@@ -1,12 +1,14 @@
 module Main (main) where
 
 import Test.Hspec
-import LevelSpec (spec)
-import ExprSpec (spec)
-import TypeCheckerSpec (spec)
+import qualified LevelSpec
+import qualified ExprSpec
+import qualified TypeCheckerSpec
+import qualified Integration
 
 main :: IO ()
 main = hspec $ do
   LevelSpec.spec
   ExprSpec.spec
   TypeCheckerSpec.spec
+  Integration.test
