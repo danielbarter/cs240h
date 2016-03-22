@@ -15,6 +15,7 @@ import Kernel.Level
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import Control.Monad (mplus)
+import Text.PrettyPrint.HughesPJ (text,(<>),(<+>), parens, quotes, braces, Doc, render)
 
 data BinderInfo = BinderDefault | BinderImplicit | BinderStrict | BinderClass deriving (Eq,Show,Ord)
 data ExprCache = ExprCache { cacheHasLocal :: !Bool,
@@ -50,7 +51,13 @@ data Expr = Var VarData
                 | App !AppData
                 deriving (Eq,Ord)
 
--- TODO(dhs): replace with pretty-printer
+-- TODO(dhs): replace with pretty-printer.
+-- DB: Done.
+
+{-
+
+string based expression printer printer
+
 showExpression :: Expr -> String
 showExpression e = case e of
   Var var -> "#" ++ show (varIdx var)
@@ -61,7 +68,28 @@ showExpression e = case e of
   Pi pi -> "(Pi: " ++ show (bindingDomain pi) ++ " -> " ++ show (bindingBody pi) ++ ")"
   App app -> let (f,args) = getAppOpArgs e in "(App: " ++ show f ++ " @ " ++ show args ++ ")"
 
-instance Show Expr where show e = showExpression e
+-}
+
+prettyShowExpression :: Expr -> Doc
+prettyShowExpression e = case e of
+  Var var        -> hash <> (toDoc varIdx var)
+  Local local    -> parens $ text "Local" <+> ( angledBrackets $ toDoc localName local )
+  Sort sort      -> if isZero (sortLevel sort) then text "Prop"
+                                               else (text "Type") <> period <> ( braces $ toDoc sortLevel sort )
+  Constant const -> quotes $ toDoc constName const
+  Lambda lam     -> parens $ (text "Lambda") <> colon <+> (toDoc bindingDomain lam) <+> text "==>" <+> (toDoc bindingBody lam)
+  Pi pi          -> parens $ (text "Pi")     <> colon <+> (toDoc bindingDomain pi)  <+> text "->"  <+> (toDoc bindingBody pi)
+  App app        -> let (f,args) = getAppOpArgs e in parens $ (text "App") <> colon <+> (toDoc id f) <+> at <+> (toDoc id args)
+  where hash             = text "#"
+        langle           = text "<"
+        rangle           = text ">"
+        period           = text "."
+        colon            = text ":"
+        at               = text "@"
+        angledBrackets d = langle <> d <> rangle
+        toDoc f x        = (text . show . f) x
+
+instance Show Expr where show e = render $ prettyShowExpression e
 
 {- Free variables -}
 
